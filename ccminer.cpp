@@ -97,7 +97,7 @@ bool want_stratum = true;
 bool have_stratum = false;
 bool allow_gbt = true;
 bool allow_mininginfo = true;
-bool check_dups = true; //false;
+bool check_dups = false;
 bool check_stratum_jobs = false;
 bool opt_submit_stale = false;
 bool submit_old = false;
@@ -1010,10 +1010,14 @@ static bool submit_upstream_work(CURL *curl, struct work *work)
 			le32enc(&ntime, work->data[17]);
 			le32enc(&nonce, work->data[19]);
 		}
-		noncestr = bin2hex((const uchar*)(&nonce), 4);
+		if (opt_algo == ALGO_ZENPROTOCOL) {
+		  noncestr = bin2hex((const uchar*)(&work->data[21]), 16);
+		} else {
+		  noncestr = bin2hex((const uchar*)(&nonce), 4);
+		}
 
 		if (check_dups)
-			sent = hashlog_already_submittted(work->job_id, nonce);
+		        sent = hashlog_already_submittted(work->job_id, nonce);
 		if (sent > 0) {
 			sent = (uint32_t) time(NULL) - sent;
 			if (!opt_quiet) {
@@ -1034,6 +1038,8 @@ static bool submit_upstream_work(CURL *curl, struct work *work)
 		} else if (opt_algo == ALGO_SIA) {
 			uint16_t high_nonce = swab32(work->data[9]) >> 16;
 			xnonce2str = bin2hex((unsigned char*)(&high_nonce), 2);
+		} else if (opt_algo == ALGO_ZENPROTOCOL) {
+		  xnonce2str = bin2hex(&((uint8_t*)work->data)[92], 4);
 		} else {
 			xnonce2str = bin2hex(work->xnonce2, work->xnonce2_len);
 		}
@@ -1055,9 +1061,15 @@ static bool submit_upstream_work(CURL *curl, struct work *work)
 					pool->user, work->job_id + 8, xnonce2str, ntimestr, noncestr, nvotestr, stratum.job.shares_count + 10);
 			free(nvotestr);
 		} else {
+		        char *data = bin2hex((const uchar*)(&work->data), 100);
+			//char *nonce1 = bin2hex((const uchar*)(&work->data[23]), 4);
+			//char *nonce2 = bin2hex((const uchar*)(&work->data[24]), 4);
 			sprintf(s, "{\"method\": \"mining.submit\", \"params\": ["
-					"\"%s\", \"%s\", \"%s\", \"%s\", \"%s\"], \"id\":%u}",
-					pool->user, work->job_id + 8, xnonce2str, ntimestr, noncestr, stratum.job.shares_count + 10);
+					"\"%s\", \"%s\", \"%s\"], \"id\":%u}",
+				pool->user, work->job_id, data, stratum.job.shares_count + 4);
+			//free(nonce1);
+			//free(nonce2);
+			free(data);
 		}
 		free(xnonce2str);
 		free(ntimestr);
@@ -1573,7 +1585,7 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 		return rpc2_stratum_gen_work(sctx, work);
 
 	if (!sctx->job.job_id) {
-		// applog(LOG_WARNING, "stratum_gen_work: job not yet retrieved");
+	        applog(LOG_WARNING, "stratum_gen_work: job not yet retrieved");
 		return false;
 	}
 
@@ -1581,9 +1593,10 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 
 	// store the job ntime as high part of jobid
 	snprintf(work->job_id, sizeof(work->job_id), "%07x %s",
-		be32dec(sctx->job.ntime) & 0xfffffff, sctx->job.job_id);
+	be32dec(sctx->job.ntime) & 0xfffffff, sctx->job.job_id);
+	snprintf(work->job_id, sizeof(work->job_id), "%s", sctx->job.job_id);
 	work->xnonce2_len = sctx->xnonce2_size;
-	memcpy(work->xnonce2, sctx->job.xnonce2, sctx->xnonce2_size);
+	//memcpy(work->xnonce2, sctx->job.xnonce2, sctx->xnonce2_size);
 
 	// also store the block number
 	work->height = sctx->job.height;
@@ -1595,6 +1608,7 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 		case ALGO_DECRED:
 		case ALGO_EQUIHASH:
 		case ALGO_SIA:
+	        case ALGO_ZENPROTOCOL:
 			// getwork over stratum, no merkle to generate
 			break;
 #ifdef WITH_HEAVY_ALGO
@@ -1626,7 +1640,7 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 	}
 	
 	/* Increment extranonce2 */
-	for (i = 0; i < (int)sctx->xnonce2_size && !++sctx->job.xnonce2[i]; i++);
+	//	for (i = 0; i < (int)sctx->xnonce2_size && !++sctx->job.xnonce2[i]; i++);
 
 	/* Assemble block header */
 	memset(work->data, 0, sizeof(work->data));
@@ -1690,6 +1704,11 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 		memcpy(&work->data[12], sctx->job.coinbase, 32); // merkle_root
 		work->data[20] = 0x80000000;
 		if (opt_debug) applog_hex(work->data, 80);
+	} else if (opt_algo == ALGO_ZENPROTOCOL) {
+	        memcpy(&work->data, &sctx->job.data, 100);
+		for (int i = 0; i < 3; ++i) {
+		  work->data[21 + i] = (rand() * (i + 1));
+		}
 	} else {
 		for (i = 0; i < 8; i++)
 			work->data[9 + i] = be32dec((uint32_t *)merkle_root + i);
@@ -1722,7 +1741,7 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 
 	pthread_mutex_unlock(&stratum_work_lock);
 
-	if (opt_debug && opt_algo != ALGO_DECRED && opt_algo != ALGO_EQUIHASH && opt_algo != ALGO_SIA) {
+	if (opt_debug && opt_algo != ALGO_DECRED && opt_algo != ALGO_EQUIHASH && opt_algo != ALGO_SIA && opt_algo != ALGO_ZENPROTOCOL) {
 		uint32_t utm = work->data[17];
 		if (opt_algo != ALGO_ZR5) utm = swab32(utm);
 		char *tm = atime2str(utm - sctx->srvtime_diff);
@@ -1769,7 +1788,7 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 			equi_work_set_target(work, sctx->job.diff / opt_difficulty);
 			break;
 		default:
-			work_set_target(work, sctx->job.diff / opt_difficulty);
+		  work_set_target(work, sctx->job.diff / opt_difficulty);
 	}
 
 	if (stratum_diff != sctx->job.diff) {
@@ -1920,7 +1939,7 @@ static void *miner_thread(void *userdata)
 		uint32_t start_nonce;
 		uint32_t scan_time = have_longpoll ? LP_SCANTIME : opt_scantime;
 		uint64_t max64, minmax = 0x100000;
-		int nodata_check_oft = 0;
+		uint32_t nodata_check_oft = 0;
 		bool regen = false;
 
 		// &work.data[19]
@@ -1954,7 +1973,7 @@ static void *miner_thread(void *userdata)
 		if (have_stratum) {
 			uint32_t sleeptime = 0;
 
-			if (opt_algo == ALGO_DECRED || opt_algo == ALGO_WILDKECCAK /* getjob */)
+			if (opt_algo == ALGO_ZENPROTOCOL || opt_algo == ALGO_DECRED || opt_algo == ALGO_WILDKECCAK /* getjob */)
 				work_done = true; // force "regen" hash
 			while (!work_done && time(NULL) >= (g_work_time + opt_scantime)) {
 				usleep(100*1000);
@@ -2016,6 +2035,7 @@ static void *miner_thread(void *userdata)
 				uint64_t target64 = g_work.target[7] * 0x100000000ULL + g_work.target[6];
 				applog(LOG_DEBUG, "job %s target change: %llx (%.1f)", g_work.job_id, target64, g_work.targetdiff);
 			}
+
 			memcpy(work.target, g_work.target, sizeof(work.target));
 			work.targetdiff = g_work.targetdiff;
 			work.height = g_work.height;
@@ -2129,6 +2149,7 @@ static void *miner_thread(void *userdata)
 
 		// prevent gpu scans before a job is received
 		if (opt_algo == ALGO_SIA) nodata_check_oft = 7; // no stratum version
+		else if (opt_algo == ALGO_ZENPROTOCOL) nodata_check_oft = 4; // no stratum version
 		else if (opt_algo == ALGO_DECRED) nodata_check_oft = 4; // testnet ver is 0
 		else nodata_check_oft = 0;
 		if (have_stratum && work.data[nodata_check_oft] == 0 && !opt_benchmark) {
@@ -2382,6 +2403,11 @@ static void *miner_thread(void *userdata)
 			gpulog(LOG_WARNING, thr_id, "%s", cudaGetErrorString(err));
 
 		work.valid_nonces = 0;
+
+		if (have_stratum) {
+		        work.target[0] = (work.target[7]);
+			work.target[1] = (work.target[6]);
+		}
 
 		/* scan nonces for a proof-of-work hash */
 		switch (opt_algo) {
@@ -2686,7 +2712,7 @@ static void *miner_thread(void *userdata)
 		}
 
 		// only required to debug purpose
-		if (opt_debug && check_dups && opt_algo != ALGO_DECRED && opt_algo != ALGO_EQUIHASH && opt_algo != ALGO_SIA)
+		if (opt_debug && check_dups && opt_algo != ALGO_DECRED && opt_algo != ALGO_EQUIHASH && opt_algo != ALGO_SIA && opt_algo != ALGO_ZENPROTOCOL)
 			hashlog_remember_scan_range(&work);
 
 		/* output */
@@ -4082,7 +4108,7 @@ int main(int argc, char *argv[])
 		allow_mininginfo = false;
 	}
 
-	if (opt_algo == ALGO_EQUIHASH) {
+	if (opt_algo == ALGO_EQUIHASH || opt_algo == ALGO_ZENPROTOCOL) {
 		opt_extranonce = false; // disable subscribe
 	}
 
