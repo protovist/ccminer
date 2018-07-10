@@ -981,7 +981,7 @@ char *stratum_recv_line(struct stratum_ctx *sctx)
 			memset(s, 0, RBUFSIZE);
 			n = recv(sctx->sock, s, RECVSIZE, 0);
 			if (!n) {
-				ret = false;
+			        ret = false;
 				break;
 			}
 			if (n < 0) {
@@ -1448,7 +1448,7 @@ static bool stratum_notify(struct stratum_ctx *sctx, json_t *params)
 	int merkle_count, i, p=0;
 	json_t *merkle_arr;
 	uchar **merkle = NULL;
-	// uchar(*merkle_tree)[32] = { 0 };
+	uchar(*merkle_tree)[32] = { 0 };
 	int ntime;
 	char algo[64] = { 0 };
 	get_currentalgo(algo, sizeof(algo));
@@ -1461,6 +1461,7 @@ static bool stratum_notify(struct stratum_ctx *sctx, json_t *params)
 
 	job_id = json_string_value(json_array_get(params, p++));
 	prevhash = json_string_value(json_array_get(params, p++));
+#if 0	
 	if (has_claim) {
 		extradata = json_string_value(json_array_get(params, p++));
 		if (!extradata || strlen(extradata) != 64) {
@@ -1516,9 +1517,10 @@ static bool stratum_notify(struct stratum_ctx *sctx, json_t *params)
 		merkle[i] = (uchar*) malloc(32);
 		hex2bin(merkle[i], s, 32);
 	}
-
+#endif
 	pthread_mutex_lock(&stratum_work_lock);
 
+#if 0	
 	coinb1_size = strlen(coinb1) / 2;
 	coinb2_size = strlen(coinb2) / 2;
 	sctx->job.coinbase_size = coinb1_size + sctx->xnonce1_size +
@@ -1532,10 +1534,13 @@ static bool stratum_notify(struct stratum_ctx *sctx, json_t *params)
 	if (!sctx->job.job_id || strcmp(sctx->job.job_id, job_id))
 		memset(sctx->job.xnonce2, 0, sctx->xnonce2_size);
 	hex2bin(sctx->job.xnonce2 + sctx->xnonce2_size, coinb2, coinb2_size);
-
+#endif
+	
 	free(sctx->job.job_id);
 	sctx->job.job_id = strdup(job_id);
-	hex2bin(sctx->job.prevhash, prevhash, 32);
+	hex2bin(sctx->job.data, prevhash, 100);
+
+#if 0
 	if (has_claim) hex2bin(sctx->job.extra, extradata, 32);
 	if (has_roots) hex2bin(sctx->job.extra, extradata, 64);
 
@@ -1546,7 +1551,6 @@ static bool stratum_notify(struct stratum_ctx *sctx, json_t *params)
 	free(sctx->job.merkle);
 	sctx->job.merkle = merkle;
 	sctx->job.merkle_count = merkle_count;
-
 	hex2bin(sctx->job.version, version, 4);
 	hex2bin(sctx->job.nbits, nbits, 4);
 	hex2bin(sctx->job.ntime, stime, 4);
@@ -1556,7 +1560,7 @@ static bool stratum_notify(struct stratum_ctx *sctx, json_t *params)
 			hex2bin(sctx->job.nreward, nreward, 2);
 	}
 	sctx->job.clean = clean;
-
+#endif       
 	sctx->job.diff = sctx->next_diff;
 
 	pthread_mutex_unlock(&stratum_work_lock);
@@ -1578,6 +1582,7 @@ static bool stratum_set_difficulty(struct stratum_ctx *sctx, json_t *params)
 
 	pthread_mutex_lock(&stratum_work_lock);
 	sctx->next_diff = diff;
+	sctx->job.diff = diff;
 	pthread_mutex_unlock(&stratum_work_lock);
 
 	return true;

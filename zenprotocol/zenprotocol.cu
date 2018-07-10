@@ -75,10 +75,10 @@ extern "C" int scanhash_zenprotocol(int thr_id, struct work* work, uint32_t max_
 	zenprotocol_setBlock_100(work->data);
         zenprotocol_setTarget(ptarget);
         work->valid_nonces = 0;
-	uint32_t start_nonce = *nonceptr;
 
         CUDA_SAFE_CALL(cudaMemset(d_resultNonce[thr_id], 0xFF, 2 * sizeof(uint32_t)));
 	do {
+		uint32_t start_nonce = *nonceptr;
                 *hashes_done = *nonceptr - first_nonce + throughput;
                 zenprotocol_cpu_hash(thr_id, throughput, start_nonce, d_resultNonce[thr_id]);
                 CUDA_SAFE_CALL(cudaMemcpy(&work->nonces[0], d_resultNonce[thr_id], 2 * sizeof(uint32_t), cudaMemcpyDeviceToHost));
