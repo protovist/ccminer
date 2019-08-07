@@ -63,7 +63,7 @@ int scanhash_neoscrypt(int thr_id, struct work* work, uint32_t max_nonce, unsign
 
 	do {
 		memset(work->nonces, 0xff, sizeof(work->nonces));
-		neoscrypt_hash_k4(thr_id, throughput, pdata[19], work->nonces, have_stratum);
+		neoscrypt_hash_k4(thr_id, throughput, pdata[19], (uint32_t*)work->nonces, have_stratum);
 
 		*hashes_done = pdata[19] - first_nonce + throughput;
 

@@ -66,7 +66,7 @@ int scanhash_groestlcoin(int thr_id, struct work *work, uint32_t max_nonce, unsi
 		*hashes_done = pdata[19] - start_nonce + throughput;
 
 		// GPU hash
-		groestlcoin_cpu_hash(thr_id, throughput, pdata[19], &work->nonces[0]);
+		groestlcoin_cpu_hash(thr_id, throughput, pdata[19], (uint32_t*)&work->nonces[0]);
 
 		if (work->nonces[0] < UINT32_MAX && bench_algo < 0)
 		{

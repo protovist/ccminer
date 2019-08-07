@@ -23,6 +23,7 @@ enum sha_algos {
 	ALGO_HEAVY,		/* Heavycoin hash */
 	ALGO_HMQ1725,
 	ALGO_HSR,
+	ALGO_CRUZ,
 	ALGO_KECCAK,
 	ALGO_KECCAKC,		/* refreshed Keccak with pool factor 256 */
 	ALGO_JACKPOT,
@@ -93,6 +94,7 @@ static const char *algo_names[] = {
 	"heavy",
 	"hmq1725",
 	"hsr",
+        "cruz",
 	"keccak",
 	"keccakc",
 	"jackpot",

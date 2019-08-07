@@ -70,7 +70,7 @@ int scanhash_myriad(int thr_id, struct work *work, uint32_t max_nonce, unsigned 
 		memset(work->nonces, 0xff, sizeof(work->nonces));
 
 		// GPU
-		myriadgroestl_cpu_hash(thr_id, throughput, pdata[19], work->nonces);
+		myriadgroestl_cpu_hash(thr_id, throughput, pdata[19], (uint32_t*)work->nonces);
 
 		*hashes_done = pdata[19] - start_nonce + throughput;
 

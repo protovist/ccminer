@@ -283,6 +283,7 @@ extern int scanhash_cryptonight(int thr_id, struct work* work, uint32_t max_nonc
 extern int scanhash_decred(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_deep(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_equihash(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
+extern int scanhash_cruz(int thr_id, struct work* work, uint64_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_keccak256(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_fresh(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_fugue256(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
@@ -707,11 +708,13 @@ struct tx {
 
 #define MAX_NONCES 2
 struct work {
-	uint32_t data[48];
+	uint32_t data[128];
 	uint32_t target[8];
 	uint32_t maxvote;
 
 	char job_id[128];
+        uint32_t work_id;
+        size_t work_size;
 	size_t xnonce2_len;
 	uchar xnonce2[32];
 
@@ -725,15 +728,15 @@ struct work {
 	uint8_t submit_nonce_id;
 	uint8_t job_nonce_id;
 
-	uint32_t nonces[MAX_NONCES];
+	uint64_t nonces[MAX_NONCES];
 	double sharediff[MAX_NONCES];
 	double shareratio[MAX_NONCES];
 	double targetdiff;
 
 	uint32_t height;
 
-	uint32_t scanned_from;
-	uint32_t scanned_to;
+	uint64_t scanned_from;
+	uint64_t scanned_to;
 
 	/* pok getwork txs */
 	uint32_t tx_count;
