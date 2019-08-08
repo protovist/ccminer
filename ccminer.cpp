@@ -860,7 +860,7 @@ int share_result(int result, int pooln, double sharediff, const char *reason)
 		sprintf(solved, " solved: %u", p->solved_count);
 	}
 
-	applog(LOG_NOTICE, "accepted: %lu/%lu (%s), %s %s%s",
+	applog(LOG_INFO, "accepted: %lu/%lu (%s), %s %s%s",
 			p->accepted_count,
 			p->accepted_count + p->rejected_count,
 			suppl, s, flag, solved);
@@ -1900,12 +1900,10 @@ static void *miner_thread(void *userdata)
                   nonceptr = (uint64_t*)&work.data[EQNONCE_OFFSET]; // 27 is pool extranonce (256bits nonce space)
 			wcmplen = 4+32+32;
 		} else if (opt_algo == ALGO_CRUZ) {
-                  nonceptr = &work.nonces[1];
+                  nonceptr = &work.current_nonce;
                 }
 
 		if (have_stratum) {
-			nonceptr[0] = (UINT64_MAX / opt_n_threads) * thr_id; // 0 if single thr
-
 			uint32_t sleeptime = 0;
 
 			if (opt_algo == ALGO_DECRED || opt_algo == ALGO_WILDKECCAK /* getjob */)
@@ -1973,7 +1971,7 @@ static void *miner_thread(void *userdata)
 			memcpy(work.target, g_work.target, sizeof(work.target));
 			work.targetdiff = g_work.targetdiff;
 			work.height = g_work.height;
-			nonceptr[0] = (UINT64_MAX / opt_n_threads) * thr_id; // 0 if single thr
+			nonceptr[0] = ((0x1fffffffffffff - 1000000000000000) / opt_n_threads) * thr_id;
 		}
 
 		if (opt_algo == ALGO_ZR5) {
@@ -2017,7 +2015,7 @@ static void *miner_thread(void *userdata)
 			}
 			#endif
 			memcpy(&work, &g_work, sizeof(struct work));
-			nonceptr[0] = (UINT64_MAX / opt_n_threads) * thr_id; // 0 if single thr
+			nonceptr[0] = (8007199254740991 / opt_n_threads) * thr_id; // 0 if single thr
 		} else
 			nonceptr[0]++; //??
 
@@ -2054,8 +2052,9 @@ static void *miner_thread(void *userdata)
 			nonceptr[0] = 0;
 			end_nonce = UINT32_MAX;
                 } else if (opt_algo == ALGO_CRUZ) {
-                  nonceptr[0] = 0;
-                  end_nonce = 0x1fffffffffffff;
+                  // nonceptr[0] = 0;
+                  nonceptr[0] = (8007199254740991 / opt_n_threads) * thr_id;
+                  end_nonce = (0x1fffffffffffffU - 1000000000000000) / opt_n_threads * (thr_id + 1) - (thr_id + 1);
 		} else if (opt_benchmark) {
 			// randomize work
 			nonceptr[-1] += 1;
@@ -2215,15 +2214,17 @@ static void *miner_thread(void *userdata)
 			}
 		}
 
-		max64 *= (uint32_t)thr_hashrates[thr_id];
+                //                printf("MAX64: %016lx\n", max64);
+                //		max64 *= (uint32_t)thr_hashrates[thr_id];
+                //                printf("MAX64: %016lx, %lu\n", max64, max64);
 
 		/* on start, max64 should not be 0,
 		 *    before hashrate is computed */
 		if (max64 < minmax) {
 			switch (opt_algo) {
                         case ALGO_CRUZ:
-                          minmax = 0xF0000000U;
-                          //                          minmax = 0x1fffffffffffffU - 1000000000000000;
+                          minmax = 0xFFFFFFFF;//0x1fffffffffff / opt_n_threads;
+                          //                          minmax = 0x1fffffffffffff - 1000000000000000;
                           break;
 			case ALGO_BLAKECOIN:
 			case ALGO_BLAKE2S:
@@ -2288,27 +2289,31 @@ static void *miner_thread(void *userdata)
 			}
 			max64 = max(minmax-1, max64);
 		}
-
+                //                printf("MINMAX: %016lx\n", minmax);
+                //                printf("MAX64: %016lx\n", max64);
 		// we can't scan more than uint32 capacity
-                max64 = min(UINT64_MAX, max64);
+                max64 = min(0x1fffffffffffff - 1000000000000000, max64);
+                //                printf("MAX64: %016lx\n", max64);
 
-                nonceptr[0] = (max64 / opt_n_threads) * thr_id; // 0 if single thr
 		start_nonce = nonceptr[0];
+                //                printf("****** START: %lu", start_nonce);
 
 		/* never let small ranges at end */
-		if (end_nonce >= max64 - 1024)
-			end_nonce = max64;
+		if (end_nonce >= (0x1fffffffffffff - 1000000000000000) - 65536) {
+                  end_nonce = 0x1fffffffffffff - 1000000000000000;
+                }
 
 		if ((max64 + start_nonce) >= end_nonce)
 			max_nonce = end_nonce;
 		else
 			max_nonce = (uint64_t) (max64 + start_nonce);
+                //                printf("MAX: %016lx\n", max_nonce);
 
 		// todo: keep it rounded to a multiple of 256 ?
 
-		if (unlikely(start_nonce > max_nonce)) {
+		if (unlikely(start_nonce > (0x1fffffffffffff - 1000000000000000))) {
 			// should not happen but seen in skein2 benchmark with 2 gpus
-			max_nonce = end_nonce = UINT64_MAX;
+                  max_nonce = end_nonce = 0x1fffffffffffff - 1000000000000000;
 		}
 
 		work.scanned_from = start_nonce;
@@ -2540,11 +2545,13 @@ static void *miner_thread(void *userdata)
 		if (opt_led_mode == LED_MODE_MINING)
 			gpu_led_off(dev_id);
 
-		if (abort_flag)
+		if (abort_flag) {
 			break; // time to leave the mining loop...
+                }
 
-		if (work_restart[thr_id].restart)
+		if (work_restart[thr_id].restart) {
 			continue;
+                }
 
 		/* record scanhash elapsed time */
 		gettimeofday(&tv_end, NULL);
@@ -2606,14 +2613,15 @@ static void *miner_thread(void *userdata)
 		if (rc > 1)
 			work.scanned_to = max(work.nonces[0], work.nonces[1]);
 		else {
-			work.scanned_to = (uint32_t)max_nonce;
-			if (opt_debug && opt_benchmark) {
+                  //			work.scanned_to = (uint32_t)max_nonce;
+                  work.scanned_to = work.current_nonce;
+                  if (opt_debug && opt_benchmark) {
 				// to debug nonce ranges
 				gpulog(LOG_DEBUG, thr_id, "ends=%08x range=%08x", nonceptr[0], (nonceptr[0] - start_nonce));
 			}
 			// prevent low scan ranges on next loop on fast algos (blake)
-			if (nonceptr[0] > UINT64_MAX - 1024)
-				nonceptr[0] = UINT64_MAX;
+                  //			if (nonceptr[0] > UINT64_MAX - 1024)
+                  //				nonceptr[0] = UINT64_MAX;
 		}
 
 		// only required to debug purpose
@@ -2659,10 +2667,10 @@ static void *miner_thread(void *userdata)
 				gpu_led_percent(dev_id, 50);
 
 			work.submit_nonce_id = 0;
-			nonceptr[0] = work.nonces[0];
+                        //			nonceptr[0] = work.current_nonce;
 
                         if (opt_algo == ALGO_CRUZ) {
-                          printf("***** SUBMIT WORK ID: %d", g_work.work_id);
+                          //                          printf("***** SUBMIT WORK ID: %d", g_work.work_id);
                           std::string submitWorkText = 
 "{"
 "  \"type\": \"submit_work\","
@@ -2682,7 +2690,8 @@ static void *miner_thread(void *userdata)
 
                           applog(LOG_BLUE, "%s", submitWorkText.c_str());
                           g_webSocket.send(submitWorkText);
-                          nonceptr[0] = curnonce;
+                          //                          share_result(json_is_null(err_val), stratum.pooln, sharediff, reject_reason);
+                          //                          nonceptr[0] = curnonce;
                           continue;
                         }
                         
@@ -2973,6 +2982,7 @@ wait_stratum_url:
         if (msg->type == ix::WebSocketMessageType::Message) {
           //          std::cout << msg->str << std::endl;
           json_error_t error;
+
           json_t* response = JSON_LOADS(msg->str.c_str(), &error);
           if (!response) {
             applog(LOG_ERR, "json parse failed at line %d: %s\n%s",
@@ -2984,6 +2994,18 @@ wait_stratum_url:
             applog(LOG_ERR, "type error");
           }
           applog(LOG_BLUE, "response type: '%s'", json_string_value(type));
+
+          if (std::string(json_string_value(type)) == "submit_work_result") {
+            json_t* body = json_object_get(response, "body");
+            const char* error = json_string_value(json_object_get(body, "error"));
+            share_result(error == NULL, 0, g_work.sharediff[0], error);
+            if (error) {
+              g_work_time = 0;
+              restart_threads();
+            }
+            return;
+          }
+
           if (strncmp(json_string_value(type), "work", 4) != 0) {
             return;
           }
@@ -2998,10 +3020,10 @@ wait_stratum_url:
           json_t* body = json_object_get(response, "body");
           g_work.work_id = json_integer_value(json_object_get(body, "work_id"));
           std::string work_id = std::to_string(json_integer_value(json_object_get(body, "work_id")));
-          printf("WORK_ID: %s\n", work_id.c_str());
+          //          printf("WORK_ID: %s\n", work_id.c_str());
           cbin2hex(g_work.job_id, (char*)&g_work.work_id, work_id.size());
-          printf("WORK_ID: %s\n", g_work.job_id);
-          printf("WORK_ID: %d\n", g_work.work_id);
+          //          printf("WORK_ID: %s\n", g_work.job_id);
+          //          printf("WORK_ID: %d\n", g_work.work_id);
           g_header = json_object_get(body, "header");
 
           uint8_t target[32];

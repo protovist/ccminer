@@ -728,6 +728,7 @@ struct work {
 	uint8_t submit_nonce_id;
 	uint8_t job_nonce_id;
 
+  uint64_t current_nonce;
 	uint64_t nonces[MAX_NONCES];
 	double sharediff[MAX_NONCES];
 	double shareratio[MAX_NONCES];

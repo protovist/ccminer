@@ -80,7 +80,7 @@ extern "C" int scanhash_cruz(int thr_id, struct work* work, uint64_t max_nonce, 
 	uint32_t _ALIGN(64) work_data[128];
 	uint32_t *pdata = work->data;
 	uint32_t *ptarget = work->target;
-	const uint32_t first_nonce = work->nonces[1];
+	const uint64_t first_nonce = work->current_nonce;
 	const int dev_id = device_map[thr_id];
 	uint64_t throughput;
 	uint32_t intensity = 23;
@@ -93,11 +93,11 @@ extern "C" int scanhash_cruz(int thr_id, struct work* work, uint64_t max_nonce, 
 	if (!init[thr_id])
 	{
 		cudaSetDevice(dev_id);
-		if (opt_cudaschedule == -1 && gpu_threads == 1) {
 			cudaDeviceReset();
 			// reduce cpu usage
 			cudaSetDeviceFlags(cudaDeviceScheduleBlockingSync);
 			CUDA_LOG_ERROR();
+		if (opt_cudaschedule == -1 && gpu_threads == 1) {
 		}
 		cuda_get_arch(thr_id);
                 cruz_sm3_init(thr_id, throughput);
@@ -125,13 +125,28 @@ extern "C" int scanhash_cruz(int thr_id, struct work* work, uint64_t max_nonce, 
         uint8_t block_size = work->work_size - 272;
         cruz_setBlock_345((uint64_t*)work->data, ptarget, block_size);
         work->valid_nonces = 0;
-        
 	do {
 		int order = 0;
+                //                printf("START: %lu, FIRST: %lu, DONE: %lu\n", work->current_nonce,
+                //first_nonce, throughput);
 
-		*hashes_done = work->nonces[1] - first_nonce + throughput;
                 //		*hashes_done = pdata[19] - first_nonce + throughput;
-                cruz_cpu_hash(thr_id, throughput, work->nonces[1], work->nonces, order++);
+                //        time_t start = time(NULL);
+                cudaEvent_t start_event, stop_event;
+                //                cudaEventCreateWithFlags(&start_event, cudaEventBlockingSync);
+                //                cudaEventCreateWithFlags(&stop_event, cudaEventBlockingSync);
+                //                cudaEventRecord(start_event, 0);
+                cruz_cpu_hash(thr_id, throughput, work->current_nonce, work->nonces, order++);
+		*hashes_done = work->current_nonce - first_nonce + throughput;
+                //                cudaEventRecord(stop_event, 0);
+                //                cudaEventSynchronize(stop_event);
+                //                float time_elapsed;
+                //                cudaEventElapsedTime(&time_elapsed, start_event, stop_event);
+                //                printf("HASHES: %lu %.2f MH/s\n", *hashes_done,  (float)*hashes_done / time_elapsed / 1000);
+                //                printf("*** TIME: %.2f\n", time_elapsed);
+                //        time_t stop = time(NULL);
+                //        printf("*** TIME: %lu, %lu, %lu\n", stop, start, stop - start);
+                //        printf("*** HASHES: %lu %0.2f\n", *hashes_done, *hashes_done/(stop-start));
                 //                exit(1);
                 //                printf("WORKNONCE: %" PRIu64 "\n", work->nonces[0]);
 		if (work->nonces[0] > 0 && work->nonces[0] != UINT64_MAX && bench_algo < 0)
@@ -146,14 +161,14 @@ extern "C" int scanhash_cruz(int thr_id, struct work* work, uint64_t max_nonce, 
 			if (vhash[0] <= ptarget[7]) {
 				work->valid_nonces = 1;
 				work_set_target_ratio(work, vhash);
-                                work->nonces[1] = work->nonces[0] + 1;
+                                work->current_nonce = work->nonces[0] + 1;
 				return work->valid_nonces;
 			}
 			else if (vhash[0] > Htarg) {
 				gpu_increment_reject(thr_id);
 				if (!opt_quiet)
 				gpulog(LOG_WARNING, thr_id, "result for %08x does not validate on CPU!", work->nonces[0]);
-				work->nonces[1] = work->nonces[0] + 1;
+				work->current_nonce = work->nonces[0] + 1;
 				//cruz_setOutput(thr_id);
 				continue;
 			} else {
@@ -162,18 +177,18 @@ extern "C" int scanhash_cruz(int thr_id, struct work* work, uint64_t max_nonce, 
                         }
 		}
 
-		if ((uint64_t) throughput + work->nonces[1] >= max_nonce) {
+		if ((uint64_t) throughput + work->current_nonce >= max_nonce) {
                   //                  printf("BREAK\n");
-                  work->nonces[1] = max_nonce;
+                  work->current_nonce = max_nonce;
                   break;
 		}
 
-		work->nonces[1] += throughput;
-                //                printf("NEW NONCE: %" PRIu64 "\n", work->nonces[1]);
+		work->current_nonce += throughput;
+                //                printf("NEW NONCE: %" PRIu64 "\n", work->current_nonce);
 
 	} while (!work_restart[thr_id].restart);
 
-	*hashes_done = work->nonces[1] - first_nonce;
+	*hashes_done = work->current_nonce - first_nonce;
 	return 0;
 }
 

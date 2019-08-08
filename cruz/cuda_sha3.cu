@@ -140,9 +140,9 @@ void cruz_gpu_hash(uint32_t threads, uint64_t startNounce, uint64_t *resNounce)
                 //                char* nonce = "6372506688733637";
                 char buffer[20];
                 char* nonce = format_nonce(nounce, buffer);
-                //                                if (nounce % (65536*4096) == 0) {
-                //                                                  printf("%s\n", nonce);
-                //                                }
+                //                if (nounce % (65536 * 4) == 0) {
+                //                                  printf("%s\n", nonce);
+                //                }
 #pragma unroll 16
                 for (int i = 0; i < 16; i++) {
                   ((uint8_t*)sha3_gpu_state)[73 + i] ^= nonce[i];
@@ -181,10 +181,9 @@ void cruz_cpu_hash(int thr_id, uint32_t threads, uint64_t startNounce, uint64_t 
 
 	size_t shared_size = 0;
 
-	cruz_gpu_hash<<<grid, block, shared_size>>>(threads, startNounce, d_KNonce[thr_id]);
-
-	cudaMemcpy(resNonces, d_KNonce[thr_id], sizeof(uint64_t), cudaMemcpyDeviceToHost);
- 	cudaThreadSynchronize();
+        cruz_gpu_hash<<<grid, block, shared_size>>>(threads, startNounce, d_KNonce[thr_id]);
+        CUDA_SAFE_CALL(cudaMemcpy(resNonces, d_KNonce[thr_id], sizeof(uint64_t), cudaMemcpyDeviceToHost));
+        // 	cudaThreadSynchronize();
 }
 
 #if 0
