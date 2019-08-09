@@ -104,9 +104,9 @@ extern "C" int scanhash_keccak256(int thr_id, struct work* work, uint32_t max_no
 		*hashes_done = pdata[19] - first_nonce + throughput;
 
 		if(use_compat_kernels[thr_id])
-			keccak256_sm3_hash_80(thr_id, throughput, pdata[19], work->nonces, order++);
+			keccak256_sm3_hash_80(thr_id, throughput, ((uint32_t*)pdata)[19], (uint32_t*)work->nonces, order++);
 		else {
-			keccak256_cpu_hash_80(thr_id, throughput, pdata[19], work->nonces, highTarget);
+			keccak256_cpu_hash_80(thr_id, throughput, ((uint32_t*)pdata)[19], (uint32_t*)work->nonces, highTarget);
 		}
 
 		if (work->nonces[0] != UINT32_MAX && bench_algo < 0)

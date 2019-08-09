@@ -65,12 +65,12 @@ extern "C" int scanhash_sha256d(int thr_id, struct work* work, uint32_t max_nonc
 		// Hash with CUDA
 		*hashes_done = pdata[19] - first_nonce + throughput;
 
-		sha256d_hash_80(thr_id, throughput, pdata[19], work->nonces);
+		sha256d_hash_80(thr_id, throughput, ((uint32_t*)pdata)[19], (uint32_t*)work->nonces);
 		if (work->nonces[0] != UINT32_MAX)
 		{
 			uint32_t _ALIGN(64) vhash[8];
 
-			endiandata[19] = swab32(work->nonces[0]);
+			endiandata[19] = swab32(((uint32_t*)work->nonces)[0]);
 			sha256d_hash(vhash, endiandata);
 			if (vhash[7] <= ptarget[7] && fulltest(vhash, ptarget)) {
 				work->valid_nonces = 1;

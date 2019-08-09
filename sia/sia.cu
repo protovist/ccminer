@@ -227,7 +227,7 @@ int scanhash_sia(int thr_id, struct work *work, uint32_t max_nonce, unsigned lon
 	blake2b_setBlock(inputdata);
 
 	do {
-		work->nonces[0] = blake2b_hash_cuda(thr_id, throughput, pdata[8], target, work->nonces[1]);
+		work->nonces[0] = blake2b_hash_cuda(thr_id, throughput, ((uint32_t*)pdata)[8], target, ((uint32_t*)work->nonces)[1]);
 
 		*hashes_done = pdata[8] - first_nonce + throughput;
 
@@ -257,7 +257,7 @@ int scanhash_sia(int thr_id, struct work *work, uint32_t max_nonce, unsigned lon
 						if (bn_hash_target_ratio(vhashcpu, ptarget) > work->shareratio[0]) {
 							work->sharediff[1] = work->sharediff[0];
 							work->shareratio[1] = work->shareratio[0];
-							xchg(work->nonces[1], work->nonces[0]);
+							xchg(((uint32_t*)work->nonces)[1], ((uint32_t*)work->nonces)[0]);
 							work_set_target_ratio(work, vhashcpu);
 						} else {
 							bn_set_target_ratio(work, vhashcpu, 1);

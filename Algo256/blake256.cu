@@ -548,7 +548,7 @@ extern "C" int scanhash_blake256(int thr_id, struct work* work, uint32_t max_non
 					if (vhashcpu[6] <= Htarg && fulltest(vhashcpu, ptarget)) {
 						if (bn_hash_target_ratio(vhashcpu, ptarget) > work->shareratio[0]) {
 							work_set_target_ratio(work, vhashcpu);
-							xchg(work->nonces[0], work->nonces[1]);
+							xchg(((uint32_t*)work->nonces)[0], ((uint32_t*)work->nonces)[1]);
 						} else {
 							bn_set_target_ratio(work, vhashcpu, 1);
 						}

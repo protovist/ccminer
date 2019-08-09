@@ -424,7 +424,7 @@ extern "C" int scanhash_decred(int thr_id, struct work* work, uint32_t max_nonce
 							// we really want the best first ? depends...
 							work->shareratio[1] = work->shareratio[0];
 							work->sharediff[1] = work->sharediff[0];
-							xchg(work->nonces[1], work->nonces[0]);
+							xchg(((uint32_t*)work->nonces)[1], ((uint32_t*)work->nonces)[0]);
 							work_set_target_ratio(work, vhash);
 							work->valid_nonces++;
 						} else if (work->valid_nonces == 1) {

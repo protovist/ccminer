@@ -85,6 +85,7 @@ struct workio_cmd {
 
 ix::WebSocket g_webSocket;
 json_t* g_header;
+uint64_t g_found = 0;
 
 bool opt_debug = false;
 bool opt_debug_diff = false;
@@ -2970,9 +2971,11 @@ wait_stratum_url:
 	pool_is_switching = false;
 	stratum_need_reset = false;
 
-        applog(LOG_BLUE, "POOL URL: %s %s", stratum.url, pool->url);
+        //        applog(LOG_BLUE, "POOL URL: %s %s", stratum.url, pool->url);
 
-        std::string url("wss://localhost:8831/00000000e29a7850088d660489b7b9ae2da763bc3bd83324ecc54eee04840adb");
+        
+        // std::string url(std::string(pool->url).erase(0, 8) + "/00000000e29a7850088d660489b7b9ae2da763bc3bd83324ecc54eee04840adb");
+        std::string url("wss://34.68.210.209:8831/00000000e29a7850088d660489b7b9ae2da763bc3bd83324ecc54eee04840adb");
         g_webSocket.setUrl(url);
         g_webSocket.setHeartBeatPeriod(30);
         g_webSocket.disablePerMessageDeflate();
@@ -3045,7 +3048,7 @@ wait_stratum_url:
               std::string("\"transaction_count\":") + std::to_string(g_work.tx_count) + "}";
 
           applog(LOG_BLUE, work_data.c_str());
-          applog(LOG_BLUE, "%d", work_data.size());
+          //          applog(LOG_BLUE, "%d", work_data.size());
           g_work.work_size = work_data.size();
 
           /*
@@ -3093,18 +3096,26 @@ wait_stratum_url:
           }
         });
 
-        std::string publicKey = "bRcU3D+je6mDHYGPzR5eZ8aJRc+q5kBytnkF0gCS12k=";
+        //        std::string publicKey = "bRcU3D+je6mDHYGPzR5eZ8aJRc+q5kBytnkF0gCS12k=";
+        std::string publicKey = "VmTrjcttCG72SQ3gtc1/90V4HPYYprCNx/PMWYgl4xc=";
+    //        std::string publicKey = "DTL5YcckAr3oTK2UvUSSkltrgcSKFt0A62kp1Lxf69A=";
         std::string getWorkText = 
 "{"
 "  \"type\": \"get_work\","
 "  \"body\": {"
-"    \"public_keys\": [\"" + publicKey + "\"]"
+"    \"public_keys\": ["
+      "\"" + publicKey + "\","
+      "\"" + pool->user + "\","
+      "\"" + pool->user + "\","
+      "\"" + pool->user + "\","
+      "\"" + pool->user + "\""
+      "]"
 "  }"
-            "}";
+"}";
         g_webSocket.start();
         usleep(500000);
         g_webSocket.send(getWorkText);
-
+        applog(LOG_BLUE, "%s", getWorkText);
         
 	while (!abort_flag) {
           if (opt_algo == ALGO_CRUZ) {

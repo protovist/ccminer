@@ -121,9 +121,9 @@ extern "C" int scanhash_whirl(int thr_id, struct work* work, uint32_t max_nonce,
 		TRACE64(" 64 :", d_hash);
 		whirlpool512_hash_64_sm3(thr_id, throughput, pdata[19], NULL, d_hash[thr_id], order++);
 		TRACE64(" 64 :", d_hash);
-		work->nonces[0] = whirlpool512_finalhash_64(thr_id, throughput, pdata[19], NULL, d_hash[thr_id], order++);
+		work->nonces[0] = whirlpool512_finalhash_64(thr_id, throughput, ((uint32_t*)pdata)[19], NULL, d_hash[thr_id], order++);
 #else
-		whirlpool512_cpu_hash_80(thr_id, throughput, pdata[19], work->nonces, *(uint64_t*)&ptarget[6]);
+		whirlpool512_cpu_hash_80(thr_id, throughput, ((uint32_t*)pdata)[19], (uint32_t*)work->nonces, *(uint64_t*)&ptarget[6]);
 #endif
 		*hashes_done = pdata[19] - first_nonce + throughput;
 
@@ -131,7 +131,7 @@ extern "C" int scanhash_whirl(int thr_id, struct work* work, uint32_t max_nonce,
 		{
 			const uint32_t Htarg = ptarget[7];
 			uint32_t _ALIGN(64) vhash[8];
-			be32enc(&endiandata[19], work->nonces[0]);
+			be32enc(&endiandata[19], ((uint32_t*)work->nonces)[0]);
 			wcoinhash(vhash, endiandata);
 
 			if (vhash[7] <= Htarg && fulltest(vhash, ptarget)) {

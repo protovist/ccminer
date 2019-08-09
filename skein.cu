@@ -405,7 +405,7 @@ extern "C" int scanhash_skeincoin(int thr_id, struct work* work, uint32_t max_no
 
 		if (sm5) {
 			/* cuda_skeincoin.cu */
-			work->nonces[0] = skeincoin_hash_sm5(thr_id, throughput, pdata[19], 1, target64, &work->nonces[1]);
+			work->nonces[0] = skeincoin_hash_sm5(thr_id, throughput, pdata[19], 1, target64, &((uint32_t*)work->nonces)[1]);
 		} else {
 			/* quark/cuda_skein512.cu */
 			skein512_cpu_hash_80(thr_id, throughput, pdata[19], d_hash[thr_id], 1);

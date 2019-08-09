@@ -143,7 +143,7 @@ extern "C" int scanhash_lyra2v2(int thr_id, struct work* work, uint32_t max_nonc
 		cubehash256_cpu_hash_32(thr_id, throughput,pdata[19], d_hash[thr_id], order++);
 
 		memset(work->nonces, 0, sizeof(work->nonces));
-		bmw256_cpu_hash_32(thr_id, throughput, pdata[19], d_hash[thr_id], work->nonces);
+		bmw256_cpu_hash_32(thr_id, throughput, pdata[19], d_hash[thr_id], (uint32_t*)work->nonces);
 
 		*hashes_done = pdata[19] - first_nonce + throughput;
 

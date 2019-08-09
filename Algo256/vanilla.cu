@@ -442,7 +442,7 @@ extern "C" int scanhash_vanilla(int thr_id, struct work* work, uint32_t max_nonc
 					vanillahash(vhashcpu, endiandata, blakerounds);
 					if (bn_hash_target_ratio(vhashcpu, ptarget) > work->shareratio[0]) {
 						work_set_target_ratio(work, vhashcpu);
-						xchg(work->nonces[0], work->nonces[1]);
+						xchg(((uint32_t*)work->nonces)[0], ((uint32_t*)work->nonces)[1]);
 					}
 					work->valid_nonces = 2;
 					pdata[19] = max(work->nonces[0], work->nonces[1]) + 1;
