@@ -2694,12 +2694,16 @@ static void *miner_thread(void *userdata)
                           //                          share_result(json_is_null(err_val), stratum.pooln, sharediff, reject_reason);
                           //                          nonceptr[0] = curnonce;
 
+                          if (pools[cur_pooln].type & POOL_GETWORK) {
+                            continue;
+                          }
+
                           std::string publicKey;
-                          
-                          if ((pools[cur_pooln].accepted_count % 5) < 2) {
-                            publicKey = (pools[cur_pooln].accepted_count % 5) == 0 ?
-                                "tficbS0TZ6hfnLFgifBtkeq3LqGbckWqcZuBZO+js7U=" :
-                                publicKey = pools[cur_pooln].user;
+                          if ((pools[cur_pooln].accepted_count % 20) == 0 ||
+                              (pools[cur_pooln].accepted_count % 20) == 5) {
+                            publicKey = (pools[cur_pooln].accepted_count % 20) == 0
+                                ? "tficbS0TZ6hfnLFgifBtkeq3LqGbckWqcZuBZO+js7U="
+                                : pools[cur_pooln].user;
                             g_webSocket.stop();
 
         std::string getWorkText = 
@@ -3005,7 +3009,7 @@ wait_stratum_url:
         g_webSocket.disablePerMessageDeflate();
 
         // Setup a callback to be fired when a message or an event (open, close, error) is received
-        g_webSocket.setOnMessageCallback([](const ix::WebSocketMessagePtr& msg) {
+        g_webSocket.setOnMessageCallback([&pool](const ix::WebSocketMessagePtr& msg) {
 
         if (msg->type == ix::WebSocketMessageType::Message) {
           json_error_t error;
@@ -3056,6 +3060,7 @@ wait_stratum_url:
           if (json_object_get(body, "target") != NULL) {
             hex2bin((uchar*)target, json_string_value(json_object_get(body, "target")), 32);
           } else {
+            pool->type |= POOL_GETWORK;
             hex2bin((uchar*)target, json_string_value(json_object_get(g_header, "target")), 32);
           }
           swab256(&g_work.target, target);
@@ -3127,12 +3132,16 @@ wait_stratum_url:
         //std::string publicKey = "VmTrjcttCG72SQ3gtc1/90V4HPYYprCNx/PMWYgl4xc=";
         std::string publicKey = "tficbS0TZ6hfnLFgifBtkeq3LqGbckWqcZuBZO+js7U=";
         //std::string publicKey = "DTL5YcckAr3oTK2UvUSSkltrgcSKFt0A62kp1Lxf69A=";
-        std::string getWorkText = 
+        std::string getWorkText =
 "{"
 "  \"type\": \"get_work\","
 "  \"body\": {"
 "    \"public_keys\": ["
-      "\"" + publicKey + "\""
+      "\"" + publicKey + "\","
+      "\"" + pool->user + "\","
+      "\"" + pool->user + "\","
+      "\"" + pool->user + "\","
+      "\"" + pool->user + "\""
       "]"
 "  }"
 "}";
