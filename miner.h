@@ -715,6 +715,7 @@ struct work {
 	char job_id[128];
         uint32_t work_id;
         size_t work_size;
+        time_t work_time;
 	size_t xnonce2_len;
 	uchar xnonce2[32];
 

@@ -26,22 +26,22 @@ extern "C" void cruz_hash(void *state, const void *input, size_t count)
 	uint32_t _ALIGN(64) hash[8];
 	sph_sha3_context ctx_sha3;
 
-        printf("SIZE: %d\n", count);
-        for (int i = 0; i < count; i++) {
-          printf("%c", ((char*)input)[i]);
-        }
-        printf("\n");
+        //        printf("DATA: %d\n", count);
+        //        for (int i = 0; i < count; i++) {
+        //          printf("%c", ((char*)input)[i]);
+        //        }
+        //        printf("\n");
 
 	sph_sha3256_init(&ctx_sha3);
 	sph_sha3256(&ctx_sha3, input, count);
 	sph_sha3256_close(&ctx_sha3, (void*)hash);
 	memcpy(state, hash, 32);
 
-        printf("### CPU HASH:\n");
-        for (int i = 0; i < 8; i++) {
-          printf("%08x ", hash[i]);
-        }
-        printf("\n");
+        //        printf("### CPU HASH:\n");
+        //        for (int i = 0; i < 8; i++) {
+        //          printf("%08x ", hash[i]);
+        //        }
+        //        printf("\n");
 }
 
 extern "C" void cruz_midstate(const void *input, void *output)
@@ -122,8 +122,17 @@ extern "C" int scanhash_cruz(int thr_id, struct work* work, uint64_t max_nonce, 
 
 	// const uint2 highTarget = make_uint2(ptarget[6], ptarget[7]);
         //cruz_setBlock_345((uint64_t*)work_data);
+
+        work->work_time = time(NULL);
+        memcpy(&((uint8_t*)work->data)[170], std::to_string(work->work_time).c_str(), 10);
+
+        uint32_t target[2];
+        target[0] = ptarget[7];
+        target[1] = ptarget[6];
         uint8_t block_size = work->work_size - 272;
-        cruz_setBlock_345((uint64_t*)work->data, ptarget, block_size);
+        
+        cruz_setBlock_345((uint64_t*)work->data, target, block_size);
+
         work->valid_nonces = 0;
 	do {
 		int order = 0;

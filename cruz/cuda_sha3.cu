@@ -24,7 +24,7 @@ static const uint64_t host_sha3_round_constants[24] = {
 
 static uint64_t *d_KNonce[MAX_GPUS];
 
-__constant__ uint32_t pTarget[8];
+__constant__ uint32_t pTarget[2];
 __constant__ uint64_t sha3_round_constants[24];
 __constant__ uint64_t c_PaddedMessage80[25]; // padded message (80 bytes + padding?)
 
@@ -156,13 +156,14 @@ void cruz_gpu_hash(uint32_t threads, uint64_t startNounce, uint64_t *resNounce)
                 //                         (sha3_gpu_state)[0],
                 //                (sha3_gpu_state)[1],
                 //                         nounce);
-		if (((uint32_t*)sha3_gpu_state)[0] <= pTarget[7] &&
-                    ((uint32_t*)sha3_gpu_state)[1] <= pTarget[6]) {
-                  printf("nonce: %s\n", nonce);
-                  printf("%08x %08x (%" PRIu64 ")\n",
-                         ((uint32_t*)sha3_gpu_state)[0],
-                         ((uint32_t*)sha3_gpu_state)[1],
-                         nounce);
+		if (cuda_swab32(((uint32_t*)sha3_gpu_state)[0]) <= pTarget[0] &&
+                    cuda_swab32(((uint32_t*)sha3_gpu_state)[1]) <= pTarget[1]) {
+                  //                  printf("nonce: %s\n", nonce);
+                  //                  printf("%08x %08x (%08x %08x) (%" PRIu64 ")\n",
+                  //                         ((uint32_t*)sha3_gpu_state)[0],
+                  //                         ((uint32_t*)sha3_gpu_state)[1],
+                  //                         pTarget[0], pTarget[1],
+                  //                         nounce);
                   resNounce[0] = nounce;
                 }
 	}
@@ -471,7 +472,7 @@ void cruz_setBlock_345(uint64_t* data, const void *pTargetIn, size_t block_size)
   
   //  unsigned char PaddedMessage[80];
   //	memcpy(PaddedMessage, pdata, 80);
-  CUDA_SAFE_CALL(cudaMemcpyToSymbol(pTarget, pTargetIn, 8*sizeof(uint32_t), 0, cudaMemcpyHostToDevice));
+  CUDA_SAFE_CALL(cudaMemcpyToSymbol(pTarget, pTargetIn, 2*sizeof(uint32_t), 0, cudaMemcpyHostToDevice));
   CUDA_SAFE_CALL(cudaMemcpyToSymbol(c_PaddedMessage80, state, 25*sizeof(uint64_t), 0, cudaMemcpyHostToDevice));
 }
 

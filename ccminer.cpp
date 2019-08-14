@@ -85,7 +85,6 @@ struct workio_cmd {
 
 ix::WebSocket g_webSocket;
 json_t* g_header;
-uint64_t g_found = 0;
 
 bool opt_debug = false;
 bool opt_debug_diff = false;
@@ -112,7 +111,7 @@ bool use_colors = true;
 int use_pok = 0;
 static bool opt_background = false;
 bool opt_quiet = false;
-int opt_maxlograte = 3;
+int opt_maxlograte = 60;
 static int opt_retries = -1;
 static int opt_fail_pause = 30;
 int opt_time_limit = -1;
@@ -1901,13 +1900,15 @@ static void *miner_thread(void *userdata)
                   nonceptr = (uint64_t*)&work.data[EQNONCE_OFFSET]; // 27 is pool extranonce (256bits nonce space)
 			wcmplen = 4+32+32;
 		} else if (opt_algo == ALGO_CRUZ) {
+                  wcmpoft = 97;
+                  wcmplen = 238;
                   nonceptr = &work.current_nonce;
                 }
 
 		if (have_stratum) {
 			uint32_t sleeptime = 0;
 
-			if (opt_algo == ALGO_DECRED || opt_algo == ALGO_WILDKECCAK /* getjob */)
+			if (opt_algo == ALGO_CRUZ || opt_algo == ALGO_DECRED || opt_algo == ALGO_WILDKECCAK /* getjob */)
 				work_done = true; // force "regen" hash
 			while (!work_done && time(NULL) >= (g_work_time + opt_scantime)) {
 				usleep(100*1000);
@@ -1929,7 +1930,7 @@ static void *miner_thread(void *userdata)
 			}
 			regen = regen || extrajob;
 
-			if (regen) {
+			if (regen && opt_algo != ALGO_CRUZ) {
 				work_done = false;
 				extrajob = false;
 				if (stratum_gen_work(&stratum, &g_work))
@@ -1963,11 +1964,11 @@ static void *miner_thread(void *userdata)
 		if (strcmp(work.job_id, g_work.job_id))
 			stratum.job.shares_count = 0;
 
-		if (!opt_benchmark && (g_work.height != work.height || memcmp(work.target, g_work.target, sizeof(work.target))))
+		if (!opt_benchmark && (g_work.work_id != work.work_id || memcmp(work.target, g_work.target, sizeof(work.target))))
 		{
 			if (opt_debug) {
 				uint64_t target64 = g_work.target[7] * 0x100000000ULL + g_work.target[6];
-				applog(LOG_DEBUG, "job %s target change: %llx (%.1f)", g_work.job_id, target64, g_work.targetdiff);
+				applog(LOG_DEBUG, "job %s target change: %016llx (%.1f)", g_work.job_id, target64, g_work.targetdiff);
 			}
 			memcpy(work.target, g_work.target, sizeof(work.target));
 			work.targetdiff = g_work.targetdiff;
@@ -2671,7 +2672,6 @@ static void *miner_thread(void *userdata)
                         //			nonceptr[0] = work.current_nonce;
 
                         if (opt_algo == ALGO_CRUZ) {
-                          //                          printf("***** SUBMIT WORK ID: %d", g_work.work_id);
                           std::string submitWorkText = 
 "{"
 "  \"type\": \"submit_work\","
@@ -2679,8 +2679,8 @@ static void *miner_thread(void *userdata)
                               "    \"work_id\":" + std::to_string(g_work.work_id) + ","
 "    \"header\": {" +
                               std::string("\"previous\":\"") + json_string_value(json_object_get(g_header, "previous")) + "\"," +
-                              std::string("\"hash_list_root\":\"") + json_string_value(json_object_get(g_header, "hash_list_root")) + "\"," +
-                              std::string("\"time\":") + std::to_string(json_integer_value(json_object_get(g_header, "time"))) + "," +
+                              std::string("\"hash_list_root\":\"") + std::string((char*)work.data, 97, 64) + "\"," +
+                              std::string("\"time\":") + std::to_string(work.work_time) + "," +
                               std::string("\"target\":\"") + json_string_value(json_object_get(g_header, "target")) + "\"," +
                               std::string("\"chain_work\":\"") + json_string_value(json_object_get(g_header, "chain_work")) + "\"," +
                               std::string("\"nonce\":") + std::to_string(work.nonces[0]) + "," +
@@ -2689,10 +2689,34 @@ static void *miner_thread(void *userdata)
 "  }"
 "}";
 
-                          applog(LOG_BLUE, "%s", submitWorkText.c_str());
+                          applog(LOG_BLUE, "submit_work:\n%s", submitWorkText.c_str());
                           g_webSocket.send(submitWorkText);
                           //                          share_result(json_is_null(err_val), stratum.pooln, sharediff, reject_reason);
                           //                          nonceptr[0] = curnonce;
+
+                          std::string publicKey;
+                          
+                          if ((pools[cur_pooln].accepted_count % 5) < 2) {
+                            publicKey = (pools[cur_pooln].accepted_count % 5) == 0 ?
+                                "tficbS0TZ6hfnLFgifBtkeq3LqGbckWqcZuBZO+js7U=" :
+                                publicKey = pools[cur_pooln].user;
+                            g_webSocket.stop();
+
+        std::string getWorkText = 
+"{"
+"  \"type\": \"get_work\","
+"  \"body\": {"
+"    \"public_keys\": ["
+      "\"" + publicKey + "\""
+      "]"
+"  }"
+"}";
+        g_webSocket.start();
+        usleep(1500000);
+        g_webSocket.send(getWorkText);
+        applog(LOG_BLUE, "%s", getWorkText.c_str());
+                          }
+                          
                           continue;
                         }
                         
@@ -2974,16 +2998,16 @@ wait_stratum_url:
         //        applog(LOG_BLUE, "POOL URL: %s %s", stratum.url, pool->url);
 
         
-        // std::string url(std::string(pool->url).erase(0, 8) + "/00000000e29a7850088d660489b7b9ae2da763bc3bd83324ecc54eee04840adb");
-        std::string url("wss://34.68.210.209:8831/00000000e29a7850088d660489b7b9ae2da763bc3bd83324ecc54eee04840adb");
+        std::string url(std::string(pool->url).erase(0, 8) + "/00000000e29a7850088d660489b7b9ae2da763bc3bd83324ecc54eee04840adb");
+        //std::string url("wss://34.68.210.209:8831/00000000e29a7850088d660489b7b9ae2da763bc3bd83324ecc54eee04840adb");
         g_webSocket.setUrl(url);
         g_webSocket.setHeartBeatPeriod(30);
         g_webSocket.disablePerMessageDeflate();
 
         // Setup a callback to be fired when a message or an event (open, close, error) is received
-        g_webSocket.setOnMessageCallback([](const ix::WebSocketMessagePtr& msg)  {
+        g_webSocket.setOnMessageCallback([](const ix::WebSocketMessagePtr& msg) {
+
         if (msg->type == ix::WebSocketMessageType::Message) {
-          //          std::cout << msg->str << std::endl;
           json_error_t error;
 
           json_t* response = JSON_LOADS(msg->str.c_str(), &error);
@@ -2996,7 +3020,8 @@ wait_stratum_url:
           if (!type) {
             applog(LOG_ERR, "type error");
           }
-          applog(LOG_BLUE, "response type: '%s'", json_string_value(type));
+          //          applog(LOG_BLUE, "response type: '%s'", json_string_value(type));
+          //          printf("MSG:\n%s\n", msg->str.c_str());
 
           if (std::string(json_string_value(type)) == "submit_work_result") {
             json_t* body = json_object_get(response, "body");
@@ -3012,6 +3037,7 @@ wait_stratum_url:
           if (strncmp(json_string_value(type), "work", 4) != 0) {
             return;
           }
+          applog(LOG_BLUE, "%s", msg->str.c_str());
 
           pthread_mutex_lock(&g_work_lock);
           memset(g_work.data, 0, sizeof(g_work.data));
@@ -3023,22 +3049,23 @@ wait_stratum_url:
           json_t* body = json_object_get(response, "body");
           g_work.work_id = json_integer_value(json_object_get(body, "work_id"));
           std::string work_id = std::to_string(json_integer_value(json_object_get(body, "work_id")));
-          //          printf("WORK_ID: %s\n", work_id.c_str());
           cbin2hex(g_work.job_id, (char*)&g_work.work_id, work_id.size());
-          //          printf("WORK_ID: %s\n", g_work.job_id);
-          //          printf("WORK_ID: %d\n", g_work.work_id);
           g_header = json_object_get(body, "header");
 
           uint8_t target[32];
-          hex2bin((uchar*)target, json_string_value(json_object_get(g_header, "target")), 32);
+          if (json_object_get(body, "target") != NULL) {
+            hex2bin((uchar*)target, json_string_value(json_object_get(body, "target")), 32);
+          } else {
+            hex2bin((uchar*)target, json_string_value(json_object_get(g_header, "target")), 32);
+          }
           swab256(&g_work.target, target);
           g_work.targetdiff = target_to_diff(g_work.target);
           g_work.height = json_integer_value(json_object_get(g_header, "height"));
           g_work.tx_count = json_integer_value(json_object_get(g_header, "transaction_count"));
-
+          
           std::string work_data = "{" +
               std::string("\"previous\":\"") + json_string_value(json_object_get(g_header, "previous")) + "\"," +
-              std::string("\"hash_list_root\":\"") + json_string_value(json_object_get(g_header, "hash_list_root")) + "\"," +
+              std::string("\"hash_list_root\":\"") + json_string_value(json_object_get(g_header, "hash_list_root"))  + "\"," +
               std::string("\"time\":") + std::to_string(json_integer_value(json_object_get(g_header, "time"))) + "," +
               std::string("\"target\":\"") + json_string_value(json_object_get(g_header, "target")) + "\"," +
               std::string("\"chain_work\":\"") + json_string_value(json_object_get(g_header, "chain_work")) + "\"," +
@@ -3047,7 +3074,7 @@ wait_stratum_url:
               std::string("\"height\":") + std::to_string(g_work.height) + "," +
               std::string("\"transaction_count\":") + std::to_string(g_work.tx_count) + "}";
 
-          applog(LOG_BLUE, work_data.c_str());
+          //          applog(LOG_BLUE, work_data.c_str());
           //          applog(LOG_BLUE, "%d", work_data.size());
           g_work.work_size = work_data.size();
 
@@ -3082,7 +3109,7 @@ wait_stratum_url:
       memcpy(&g_work.data, work_data.c_str(), work_data.size());
 
       pthread_mutex_unlock(&g_work_lock);
-      restart_threads();
+      //      restart_threads();
 
           //          printf("## NONCE: %d: %c,%c,%c,%c\n", work_data.find("\"nonce\":"),
           //                 ((uint8_t*)&g_work.data)[345],
@@ -3090,32 +3117,29 @@ wait_stratum_url:
           //                 ((uint8_t*)&g_work.data)[347],
           //                 ((uint8_t*)&g_work.data)[348]);
         } else if (msg->type == ix::WebSocketMessageType::Error) {
-            std::cout << msg->errorInfo.http_status << ": " << msg->errorInfo.reason << std::endl;
-          } else {
-                      std::cerr << static_cast<std::underlying_type<ix::WebSocketMessageType>::type>(msg->type) << ": " << msg->str << std::endl;
-          }
+          std::cout << msg->errorInfo.http_status << ": " << msg->errorInfo.reason << std::endl;
+        } else {
+          //          std::cerr << static_cast<std::underlying_type<ix::WebSocketMessageType>::type>(msg->type) << ": " << msg->str << std::endl;
+        }
         });
 
-        //        std::string publicKey = "bRcU3D+je6mDHYGPzR5eZ8aJRc+q5kBytnkF0gCS12k=";
-        std::string publicKey = "VmTrjcttCG72SQ3gtc1/90V4HPYYprCNx/PMWYgl4xc=";
-    //        std::string publicKey = "DTL5YcckAr3oTK2UvUSSkltrgcSKFt0A62kp1Lxf69A=";
+        //std::string publicKey = "bRcU3D+je6mDHYGPzR5eZ8aJRc+q5kBytnkF0gCS12k=";
+        //std::string publicKey = "VmTrjcttCG72SQ3gtc1/90V4HPYYprCNx/PMWYgl4xc=";
+        std::string publicKey = "tficbS0TZ6hfnLFgifBtkeq3LqGbckWqcZuBZO+js7U=";
+        //std::string publicKey = "DTL5YcckAr3oTK2UvUSSkltrgcSKFt0A62kp1Lxf69A=";
         std::string getWorkText = 
 "{"
 "  \"type\": \"get_work\","
 "  \"body\": {"
 "    \"public_keys\": ["
-      "\"" + publicKey + "\","
-      "\"" + pool->user + "\","
-      "\"" + pool->user + "\","
-      "\"" + pool->user + "\","
-      "\"" + pool->user + "\""
+      "\"" + publicKey + "\""
       "]"
 "  }"
 "}";
         g_webSocket.start();
-        usleep(500000);
+        usleep(1500000);
         g_webSocket.send(getWorkText);
-        applog(LOG_BLUE, "%s", getWorkText);
+        applog(LOG_BLUE, "%s", getWorkText.c_str());
         
 	while (!abort_flag) {
           if (opt_algo == ALGO_CRUZ) {
