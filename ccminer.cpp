@@ -2699,9 +2699,9 @@ static void *miner_thread(void *userdata)
                           }
 
                           std::string publicKey;
-                          if ((pools[cur_pooln].accepted_count % 20) == 0 ||
-                              (pools[cur_pooln].accepted_count % 20) == 5) {
-                            publicKey = (pools[cur_pooln].accepted_count % 20) == 0
+                          if ((pools[cur_pooln].accepted_count % 100) == 0 ||
+                              (pools[cur_pooln].accepted_count % 100) == 5) {
+                            publicKey = (pools[cur_pooln].accepted_count % 100) == 0
                                 ? "tficbS0TZ6hfnLFgifBtkeq3LqGbckWqcZuBZO+js7U="
                                 : pools[cur_pooln].user;
                             g_webSocket.stop();
