@@ -81,6 +81,7 @@ extern "C" int scanhash_cruz(int thr_id, struct work* work, uint64_t max_nonce, 
 	uint32_t *pdata = work->data;
 	uint32_t *ptarget = work->target;
 	const uint64_t first_nonce = work->current_nonce;
+        //        const uint64_t first_nonce = 6372506688733637;
 	const int dev_id = device_map[thr_id];
 	uint64_t throughput;
 	uint32_t intensity = 23;
@@ -99,7 +100,7 @@ extern "C" int scanhash_cruz(int thr_id, struct work* work, uint64_t max_nonce, 
 			CUDA_LOG_ERROR();
 		if (opt_cudaschedule == -1 && gpu_threads == 1) {
 		}
-		cuda_get_arch(thr_id);
+                //		cuda_get_arch(thr_id);
                 cruz_sm3_init(thr_id, throughput);
 
 		gpulog(LOG_INFO, thr_id, "Intensity set to %g, %u cuda threads", throughput2intensity(throughput), throughput);
