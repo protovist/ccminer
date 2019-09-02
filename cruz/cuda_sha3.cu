@@ -98,14 +98,14 @@ static void sha3_blockv30(uint64_t *s, const uint64_t *sha3_round_constants)
 }
 
 __device__
-char* format_nonce(uint64_t nonce, char* buffer) { 
+void format_nonce(uint64_t nonce, char* nonce_text) { 
   const char digits[] =
       "0001020304050607080910111213141516171819"
       "2021222324252627282930313233343536373839"
       "4041424344454647484950515253545556575859"
       "6061626364656667686970717273747576777879"
       "8081828384858687888990919293949596979899";
-  char* position = buffer + 19;
+  char* position = nonce_text + 16;
   while (nonce >= 100) {
     unsigned index = static_cast<unsigned>((nonce % 100) * 2);
     nonce /= 100;
@@ -114,23 +114,42 @@ char* format_nonce(uint64_t nonce, char* buffer) {
   }
   if (nonce < 10) {
     *--position = static_cast<char>('0' + nonce);
-    return position;
+    return;
+    //    return position;
   }
   unsigned index = static_cast<unsigned>(nonce * 2);
   *--position = digits[index + 1];
   *--position = digits[index];
-  return position;
+  //  return position;
 } 
 
 __global__
-void cruz_gpu_hash(uint32_t threads, uint64_t startNounce, uint64_t *resNounce)
+void cruz_gpu_hash(uint32_t threads, int iteration_count, uint64_t startNounce, uint64_t *resNounce)
 {
-	uint32_t thread = (blockDim.x * blockIdx.x + threadIdx.x);
-	if (thread < threads)
+  uint32_t thread = (blockDim.x * blockIdx.x + threadIdx.x) * iteration_count;
+        uint64_t nounce = startNounce + thread + 1000000000000000;
+        char nonce_text[17];
+        nonce_text[16] = '\0';
+        //        char* nonce_text =
+        format_nonce(nounce, nonce_text);
+        for (int i = 0; i < iteration_count; i++) 
 	{
-          uint64_t nounce = startNounce + thread + 1000000000000000;
+          if (i > 0) {
+          for (int j = 15; j >= 0; j--) {
+            if (nonce_text[j] == 0x39) {
+              nonce_text[j] = 0x30;
+            } else {
+              nonce_text[j]++;
+              break;
+            }
+          }
+
+          }
+          //          printf("%d,%d,%d:%d %d:%s\n", thread, threadIdx.x, blockDim.x, blockIdx.x, i, nonce_text);
+          //          printf("%08d:%04d:%s %02x %02x\n", thread, i, nonce_text, nonce_text[15], nonce_text[14]);
+
 		uint64_t sha3_gpu_state[25];
-#pragma unroll 25
+#pragma unroll
 		for (int i=0; i<25; i++) {
                   sha3_gpu_state[i] = c_PaddedMessage80[i];
 		}
@@ -138,14 +157,12 @@ void cruz_gpu_hash(uint32_t threads, uint64_t startNounce, uint64_t *resNounce)
                 //                printf("format nonce: %s\n", format_nonce(n));
                 
                 //                char* nonce = "6372506688733637";
-                char buffer[20];
-                char* nonce = format_nonce(nounce, buffer);
                 //                if (nounce % (65536 * 4) == 0) {
                 //                                  printf("%s\n", nonce);
                 //                }
-#pragma unroll 16
+#pragma unroll
                 for (int i = 0; i < 16; i++) {
-                  ((uint8_t*)sha3_gpu_state)[73 + i] ^= nonce[i];
+                  ((uint8_t*)sha3_gpu_state)[73 + i] ^= nonce_text[i];
                 }
                 //                memcpy(&((uint8_t*)sha3_gpu_state)[73], nonce, 16);
 		sha3_blockv30(sha3_gpu_state, sha3_round_constants);
@@ -159,30 +176,30 @@ void cruz_gpu_hash(uint32_t threads, uint64_t startNounce, uint64_t *resNounce)
 		if (cuda_swab32(((uint32_t*)sha3_gpu_state)[0]) <= pTarget[0] &&
                     cuda_swab32(((uint32_t*)sha3_gpu_state)[1]) <= pTarget[1]) {
                   //                  printf("nonce: %s\n", nonce);
-                  //                  printf("%08x %08x (%08x %08x) (%" PRIu64 ")\n",
-                  //                         ((uint32_t*)sha3_gpu_state)[0],
-                  //                         ((uint32_t*)sha3_gpu_state)[1],
-                  //                         pTarget[0], pTarget[1],
-                  //                         nounce);
-                  resNounce[0] = nounce;
+                                    printf("%08x %08x (%08x %08x) (%" PRIu64 ")\n",
+                                           ((uint32_t*)sha3_gpu_state)[0],
+                                           ((uint32_t*)sha3_gpu_state)[1],
+                                           pTarget[0], pTarget[1],
+                                           nounce + i);
+                  resNounce[0] = nounce + i;
                 }
 	}
 }
 
 __host__
-void cruz_cpu_hash(int thr_id, uint32_t threads, uint64_t startNounce, uint64_t *resNonces, int order)
+void cruz_cpu_hash(int thr_id, uint32_t threads, int iteration_count, uint64_t startNounce, uint64_t *resNonces)
 {
 	cudaMemset(d_KNonce[thr_id], 0xff, sizeof(uint64_t));
-	const uint32_t threadsperblock = 128;
+	const uint32_t threadsperblock = 256;
 
         dim3 grid((threads + threadsperblock-1)/threadsperblock);
         dim3 block(threadsperblock);
-        //dim3 grid = 1;
-        //dim3 block = 1;
+        //        dim3 grid = 1;
+        //        dim3 block = 1;
 
 	size_t shared_size = 0;
 
-        cruz_gpu_hash<<<grid, block, shared_size>>>(threads, startNounce, d_KNonce[thr_id]);
+        cruz_gpu_hash<<<grid, block, shared_size>>>(threads, iteration_count, startNounce, d_KNonce[thr_id]);
         CUDA_SAFE_CALL(cudaMemcpy(resNonces, d_KNonce[thr_id], sizeof(uint64_t), cudaMemcpyDeviceToHost));
         // 	cudaThreadSynchronize();
 }

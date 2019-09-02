@@ -18,7 +18,7 @@ extern "C"
 extern void cruz_sm3_init(int thr_id, uint32_t threads);
 extern void cruz_sm3_free(int thr_id);
 extern void cruz_setBlock_345(uint64_t* data, const void* ptarget, size_t block_size);
-extern void cruz_cpu_hash(int thr_id, uint32_t threads, uint64_t startNonce, uint64_t* resNonces, int order);
+extern void cruz_cpu_hash(int thr_id, uint32_t threads, int iteration_count, uint64_t startNonce, uint64_t* resNonces);
 
 // CPU Hash
 extern "C" void cruz_hash(void *state, const void *input, size_t count)
@@ -133,9 +133,9 @@ extern "C" int scanhash_cruz(int thr_id, struct work* work, uint64_t max_nonce, 
         
         cruz_setBlock_345((uint64_t*)work->data, target, block_size);
 
+        const int iteration_count = 64;
         work->valid_nonces = 0;
 	do {
-		int order = 0;
                 //                printf("START: %lu, FIRST: %lu, DONE: %lu\n", work->current_nonce,
                 //first_nonce, throughput);
 
@@ -145,8 +145,10 @@ extern "C" int scanhash_cruz(int thr_id, struct work* work, uint64_t max_nonce, 
                 //                cudaEventCreateWithFlags(&start_event, cudaEventBlockingSync);
                 //                cudaEventCreateWithFlags(&stop_event, cudaEventBlockingSync);
                 //                cudaEventRecord(start_event, 0);
-                cruz_cpu_hash(thr_id, throughput, work->current_nonce, work->nonces, order++);
-		*hashes_done = work->current_nonce - first_nonce + throughput;
+                cruz_cpu_hash(thr_id, throughput, iteration_count, work->current_nonce, work->nonces);
+
+                //                exit(1);
+		*hashes_done = work->current_nonce - first_nonce + throughput * iteration_count;
                 //                cudaEventRecord(stop_event, 0);
                 //                cudaEventSynchronize(stop_event);
                 //                float time_elapsed;
@@ -192,7 +194,7 @@ extern "C" int scanhash_cruz(int thr_id, struct work* work, uint64_t max_nonce, 
                   break;
 		}
 
-		work->current_nonce += throughput;
+		work->current_nonce += throughput * iteration_count;
                 //                printf("NEW NONCE: %" PRIu64 "\n", work->current_nonce);
 
 	} while (!work_restart[thr_id].restart);
