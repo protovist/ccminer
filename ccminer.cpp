@@ -41,7 +41,7 @@
 #endif
 #endif
 
-#include <ixwebsocket/IXWebSocket.h>
+//#include <ixwebsocket/IXWebSocket.h>
 
 #include "miner.h"
 #include "algos.h"
@@ -83,7 +83,7 @@ struct workio_cmd {
 	int pooln;
 };
 
-ix::WebSocket g_webSocket;
+//ix::WebSocket g_webSocket;
 json_t* g_header;
 
 bool opt_debug = false;
@@ -1071,6 +1071,10 @@ static bool submit_upstream_work(CURL *curl, struct work *work)
 		else if (opt_algo == ALGO_SIA) {
 			return sia_submit(curl, pool, work);
 		}
+		else if (opt_algo == ALGO_TELLOR) {
+                        return true;
+                        //			return tellor_submit(curl, pool, work);
+		}
 
 		if (opt_algo != ALGO_HEAVY && opt_algo != ALGO_MJOLLNIR) {
 			for (int i = 0; i < adata_sz; i++)
@@ -1257,6 +1261,21 @@ static bool get_upstream_work(CURL *curl, struct work *work)
 			return rc;
 		}
 		return rc;
+	}
+        else if (opt_algo == ALGO_TELLOR) {
+#if 0
+          char *tellor_header = tellor_getheader(curl, pool);
+		if (tellor_header) {
+			rc = tellor_work_decode(tellor_header, work);
+			free(sia_header);
+		}
+		gettimeofday(&tv_end, NULL);
+		if (have_stratum || unlikely(work->pooln != cur_pooln)) {
+			return rc;
+		}
+		return rc;
+#endif
+                return true;
 	}
 	if (opt_debug_threads)
 		applog(LOG_DEBUG, "%s: want_longpoll=%d have_longpoll=%d",
@@ -1559,6 +1578,7 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 		case ALGO_EQUIHASH:
 		case ALGO_CRUZ:
 		case ALGO_SIA:
+		case ALGO_TELLOR:
 			// getwork over stratum, no merkle to generate
 			break;
 #ifdef WITH_HEAVY_ALGO
@@ -1903,12 +1923,16 @@ static void *miner_thread(void *userdata)
                   wcmpoft = 97;
                   wcmplen = 238;
                   nonceptr = &work.current_nonce;
+                } else if (opt_algo == ALGO_TELLOR) {
+                  wcmpoft = 97;
+                  wcmplen = 238;
+                  nonceptr = &work.current_nonce;
                 }
 
 		if (have_stratum) {
 			uint32_t sleeptime = 0;
 
-			if (opt_algo == ALGO_CRUZ || opt_algo == ALGO_DECRED || opt_algo == ALGO_WILDKECCAK /* getjob */)
+			if (opt_algo == ALGO_TELLOR || opt_algo == ALGO_CRUZ || opt_algo == ALGO_DECRED || opt_algo == ALGO_WILDKECCAK /* getjob */)
 				work_done = true; // force "regen" hash
 			while (!work_done && time(NULL) >= (g_work_time + opt_scantime)) {
 				usleep(100*1000);
@@ -1930,7 +1954,7 @@ static void *miner_thread(void *userdata)
 			}
 			regen = regen || extrajob;
 
-			if (regen && opt_algo != ALGO_CRUZ) {
+			if (regen && opt_algo != ALGO_CRUZ && opt_algo != ALGO_TELLOR) {
 				work_done = false;
 				extrajob = false;
 				if (stratum_gen_work(&stratum, &g_work))
@@ -2054,6 +2078,10 @@ static void *miner_thread(void *userdata)
 			nonceptr[0] = 0;
 			end_nonce = UINT32_MAX;
                 } else if (opt_algo == ALGO_CRUZ) {
+                  // nonceptr[0] = 0;
+                  nonceptr[0] = (8007199254740991 / opt_n_threads) * thr_id;
+                  end_nonce = (0x1fffffffffffffU - 1000000000000000) / opt_n_threads * (thr_id + 1) - (thr_id + 1);
+                } else if (opt_algo == ALGO_TELLOR) {
                   // nonceptr[0] = 0;
                   nonceptr[0] = (8007199254740991 / opt_n_threads) * thr_id;
                   end_nonce = (0x1fffffffffffffU - 1000000000000000) / opt_n_threads * (thr_id + 1) - (thr_id + 1);
@@ -2225,6 +2253,7 @@ static void *miner_thread(void *userdata)
 		if (max64 < minmax) {
 			switch (opt_algo) {
                         case ALGO_CRUZ:
+                        case ALGO_TELLOR:
                           minmax = 0xFFFFFFFF;//0x1fffffffffff / opt_n_threads;
                           //                          minmax = 0x1fffffffffffff - 1000000000000000;
                           break;
@@ -2408,6 +2437,9 @@ static void *miner_thread(void *userdata)
 #endif
 		case ALGO_CRUZ:
 			rc = scanhash_cruz(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_TELLOR:
+			rc = scanhash_tellor(thr_id, &work, max_nonce, &hashes_done);
 			break;
 		case ALGO_KECCAK:
 		case ALGO_KECCAKC:
@@ -2671,6 +2703,7 @@ static void *miner_thread(void *userdata)
 			work.submit_nonce_id = 0;
                         //			nonceptr[0] = work.current_nonce;
 
+#if 0
                         if (opt_algo == ALGO_CRUZ) {
                           std::string submitWorkText = 
 "{"
@@ -2723,7 +2756,7 @@ static void *miner_thread(void *userdata)
                           
                           continue;
                         }
-                        
+#endif
 			if (!submit_work(mythr, &work))
 				break;
 			nonceptr[0] = curnonce;
@@ -3001,7 +3034,7 @@ wait_stratum_url:
 
         //        applog(LOG_BLUE, "POOL URL: %s %s", stratum.url, pool->url);
 
-        
+#if 0
         std::string url(std::string(pool->url).erase(0, 8) + "/00000000e29a7850088d660489b7b9ae2da763bc3bd83324ecc54eee04840adb");
         //std::string url("wss://34.68.210.209:8831/00000000e29a7850088d660489b7b9ae2da763bc3bd83324ecc54eee04840adb");
         g_webSocket.setUrl(url);
@@ -3149,7 +3182,7 @@ wait_stratum_url:
         usleep(1500000);
         g_webSocket.send(getWorkText);
         applog(LOG_BLUE, "%s", getWorkText.c_str());
-        
+#endif
 	while (!abort_flag) {
           if (opt_algo == ALGO_CRUZ) {
             usleep(500000);
@@ -4206,7 +4239,7 @@ int main(int argc, char *argv[])
 	cur_pooln = pool_get_first_valid(0);
 	pool_switch(-1, cur_pooln);
 
-	if (opt_algo == ALGO_DECRED || opt_algo == ALGO_SIA || opt_algo == ALGO_CRUZ) {
+	if (opt_algo == ALGO_DECRED || opt_algo == ALGO_SIA || opt_algo == ALGO_CRUZ || opt_algo == ALGO_TELLOR) {
 		allow_gbt = false;
 		allow_mininginfo = false;
 	}

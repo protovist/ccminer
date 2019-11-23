@@ -284,6 +284,7 @@ extern int scanhash_decred(int thr_id, struct work* work, uint32_t max_nonce, un
 extern int scanhash_deep(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_equihash(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_cruz(int thr_id, struct work* work, uint64_t max_nonce, unsigned long *hashes_done);
+extern int scanhash_tellor(int thr_id, struct work* work, uint64_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_keccak256(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_fresh(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_fugue256(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);

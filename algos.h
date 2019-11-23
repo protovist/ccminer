@@ -24,6 +24,7 @@ enum sha_algos {
 	ALGO_HMQ1725,
 	ALGO_HSR,
 	ALGO_CRUZ,
+	ALGO_TELLOR,
 	ALGO_KECCAK,
 	ALGO_KECCAKC,		/* refreshed Keccak with pool factor 256 */
 	ALGO_JACKPOT,
@@ -95,6 +96,7 @@ static const char *algo_names[] = {
 	"hmq1725",
 	"hsr",
         "cruz",
+        "tellor",
 	"keccak",
 	"keccakc",
 	"jackpot",
