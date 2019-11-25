@@ -1830,7 +1830,7 @@ static void *miner_thread(void *userdata)
 	struct work work;
 	uint64_t loopcnt = 0;
 	uint64_t max_nonce;
-	uint64_t end_nonce = UINT64_MAX / opt_n_threads * (thr_id + 1) - (thr_id + 1);
+	uint64_t end_nonce = UINT64_MAX / opt_n_threads;
 	time_t tm_rate_log = 0;
 	bool work_done = false;
 	bool extrajob = false;
@@ -1924,8 +1924,8 @@ static void *miner_thread(void *userdata)
                   wcmplen = 238;
                   nonceptr = &work.current_nonce;
                 } else if (opt_algo == ALGO_TELLOR) {
-                  wcmpoft = 97;
-                  wcmplen = 238;
+                  //                  wcmpoft = 97;
+                  //                  wcmplen = 238;
                   nonceptr = &work.current_nonce;
                 }
 
@@ -1997,7 +1997,9 @@ static void *miner_thread(void *userdata)
 			memcpy(work.target, g_work.target, sizeof(work.target));
 			work.targetdiff = g_work.targetdiff;
 			work.height = g_work.height;
-			nonceptr[0] = ((0x1fffffffffffff - 1000000000000000) / opt_n_threads) * thr_id;
+                        //			nonceptr[0] = ((0x1fffffffffffff - 1000000000000000) / opt_n_threads) * thr_id;
+                        nonceptr[0] = 0xde0b6b3a7640000 * (thr_id + 1);
+
 		}
 
 		if (opt_algo == ALGO_ZR5) {
@@ -2041,7 +2043,9 @@ static void *miner_thread(void *userdata)
 			}
 			#endif
 			memcpy(&work, &g_work, sizeof(struct work));
-			nonceptr[0] = (8007199254740991 / opt_n_threads) * thr_id; // 0 if single thr
+                        //			nonceptr[0] = (8007199254740991 / opt_n_threads) * thr_id; // 0 if single thr
+                        nonceptr[0] = 0xde0b6b3a7640000 * (thr_id + 1);
+
 		} else
 			nonceptr[0]++; //??
 
@@ -2083,8 +2087,8 @@ static void *miner_thread(void *userdata)
                   end_nonce = (0x1fffffffffffffU - 1000000000000000) / opt_n_threads * (thr_id + 1) - (thr_id + 1);
                 } else if (opt_algo == ALGO_TELLOR) {
                   // nonceptr[0] = 0;
-                  nonceptr[0] = (8007199254740991 / opt_n_threads) * thr_id;
-                  end_nonce = (0x1fffffffffffffU - 1000000000000000) / opt_n_threads * (thr_id + 1) - (thr_id + 1);
+                  nonceptr[0] = 0xde0b6b3a7640000 * (thr_id + 1);
+                  //                  end_nonce = 0xffffffffffffffff / opt_n_threads;
 		} else if (opt_benchmark) {
 			// randomize work
 			nonceptr[-1] += 1;
@@ -2254,7 +2258,7 @@ static void *miner_thread(void *userdata)
 			switch (opt_algo) {
                         case ALGO_CRUZ:
                         case ALGO_TELLOR:
-                          minmax = 0xFFFFFFFF;//0x1fffffffffff / opt_n_threads;
+                          minmax = 0xFFFFFFFFFFFFFFFF;//0x1fffffffffff / opt_n_threads;
                           //                          minmax = 0x1fffffffffffff - 1000000000000000;
                           break;
 			case ALGO_BLAKECOIN:
@@ -2330,22 +2334,17 @@ static void *miner_thread(void *userdata)
                 //                printf("****** START: %lu", start_nonce);
 
 		/* never let small ranges at end */
-		if (end_nonce >= (0x1fffffffffffff - 1000000000000000) - 65536) {
-                  end_nonce = 0x1fffffffffffff - 1000000000000000;
-                }
+                //		if (end_nonce >= (0x1fffffffffffff - 1000000000000000) - 65536) {
+                //                  end_nonce = 0x1fffffffffffff - 1000000000000000;
+                //                }
 
-		if ((max64 + start_nonce) >= end_nonce)
-			max_nonce = end_nonce;
-		else
-			max_nonce = (uint64_t) (max64 + start_nonce);
+                //                if ((max64 + start_nonce) >= end_nonce)
+                  max_nonce = end_nonce;
+                  //                else
+                  //                  max_nonce = (uint64_t) (max64 + start_nonce);
                 //                printf("MAX: %016lx\n", max_nonce);
 
 		// todo: keep it rounded to a multiple of 256 ?
-
-		if (unlikely(start_nonce > (0x1fffffffffffff - 1000000000000000))) {
-			// should not happen but seen in skein2 benchmark with 2 gpus
-                  max_nonce = end_nonce = 0x1fffffffffffff - 1000000000000000;
-		}
 
 		work.scanned_from = start_nonce;
 

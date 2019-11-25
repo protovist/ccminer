@@ -14,10 +14,11 @@ extern "C"
 #include "cuda_helper.h"
 #include "gpu_support.h"
 
-static uint32_t *d_hash[MAX_GPUS];
-static uint32_t *h_hash[MAX_GPUS];
-static uint8_t *d_remainder[MAX_GPUS];
-static uint8_t *h_remainder[MAX_GPUS];
+static uint32_t* d_hash[MAX_GPUS];
+static uint32_t* h_hash[MAX_GPUS];
+
+static uint8_t* d_remainder[MAX_GPUS];
+static uint8_t* h_remainder[MAX_GPUS];
 
 extern void tellor_setBlock_56(uint32_t* data);
 extern void tellor_keccak256_init(int thr_id);
@@ -27,6 +28,8 @@ extern void tellor_ripemd_hash(int thr_id, uint64_t threads, uint32_t* d_hash);
 extern void tellor_sha256_hash_final(int thr_id, uint64_t threads, uint32_t* d_hash);
 extern void tellor_difficulty(int thr_id, uint64_t threads, uint32_t* d_hash, uint8_t *d_remainder);
 extern void tellor_set_difficulty(const uint32_t* difficulty);
+
+extern "C" void free_tellor(int thr_id);
 
 void tellor_format_nonce(uint64_t nonce, char* nonce_text) { 
   const char digits[] =
@@ -95,9 +98,11 @@ extern "C" void tellor_hash(void *output, const void *input, size_t count)
 
 	memcpy(output, hash_sha256, 32);
 
+        uint32_t hash[8];
         printf("### CPU SHA256 HASH:\n");
         for (int i = 0; i < 8; i++) {
-          printf("%08x ", hash_sha256[i]);
+          be32enc(&hash[i], hash_sha256[i]);
+          printf("%08x ", hash[i]);
         }
         printf("\n");
 }
@@ -109,9 +114,9 @@ extern "C" int scanhash_tellor(int thr_id, struct work* work, uint64_t max_nonce
 	uint32_t _ALIGN(64) work_data[71];
 	uint32_t *pdata = work->data;
 	uint32_t *ptarget = work->target;
-        //        work->current_nonce = 5048335987331992217;
-        work->current_nonce = 5048335987331992200;
-        //work->current_nonce = 5048335987331992000;
+        //work->current_nonce = 5048335987331992217;
+        //work->current_nonce = 5048335987331992200;
+        //work->current_nonce = 5048335987331990000;
         //work->current_nonce = 5040000000000000000;
 	const uint64_t first_nonce = work->current_nonce;
         const int dev_id = device_map[thr_id];
@@ -123,30 +128,29 @@ extern "C" int scanhash_tellor(int thr_id, struct work* work, uint64_t max_nonce
 	if (opt_benchmark)
 		ptarget[7] = 0x000f;
 
-	if (!init[thr_id])
+        if (!init[thr_id])
 	{
                 CUDA_CHECK(cudaSetDevice(dev_id));
 		if (opt_cudaschedule == -1 && gpu_threads == 1) {
                   CUDA_CHECK(cudaDeviceReset());
                   CUDA_CHECK(cudaSetDeviceFlags(cudaDeviceScheduleBlockingSync));
-                  CUDA_CHECK(cudaDeviceSetLimit(cudaLimitMallocHeapSize,
-                                                16 * sizeof(uint32_t) * throughput));
+                  //                  CUDA_CHECK(cudaDeviceSetLimit(cudaLimitMallocHeapSize,
+                  //                                                16 * sizeof(uint32_t) * throughput));
                   CUDA_CHECK(cudaDeviceSetCacheConfig(cudaFuncCachePreferL1));
                   CUDA_LOG_ERROR();
 		}
                 tellor_keccak256_init(thr_id);
                 tellor_sha256_init(thr_id);
 
-                CUDA_SAFE_CALL(
-                    cudaMalloc(&d_hash[thr_id], 8 * sizeof(uint32_t) * throughput));
+                CUDA_CHECK(
+                    cudaMalloc(&d_hash[thr_id], 8 * sizeof(uint32_t) * (size_t)throughput));
                 CUDA_LOG_ERROR();
                 
                 //                CUDA_CALL_OR_RET_X(
                 //                    cudaMalloc(&d_difficulty[thr_id],
                 //                    sizeof(uint32_t) * 8), 0);
-                CUDA_SAFE_CALL(cudaMalloc(&d_remainder[thr_id], sizeof(uint8_t) * throughput));
+                CUDA_CHECK(cudaMalloc(&d_remainder[thr_id], sizeof(uint8_t) * (size_t)throughput));
                 CUDA_LOG_ERROR();
-
                 //                CUDA_CALL_OR_RET_X(
                 //                    cudaMemset(d_hash[thr_id], 0,
                 //                               sizeof(uint32_t) * 8 * throughput),
@@ -156,7 +160,7 @@ extern "C" int scanhash_tellor(int thr_id, struct work* work, uint64_t max_nonce
                 //                    0);
 
                 //                h_hash[thr_id] = (uint32_t*)malloc(sizeof(uint32_t) * 8 * throughput);
-                h_remainder[thr_id] = (uint8_t*)malloc(sizeof(uint8_t) * throughput);
+                h_remainder[thr_id] = (uint8_t*)malloc(sizeof(uint8_t) * (size_t)throughput);
 
 		gpulog(LOG_INFO, thr_id, "Intensity set to %g, %u cuda threads", throughput2intensity(throughput), throughput);
 
@@ -231,7 +235,7 @@ Out[28]: 0
         mpz_clear(difficulty_mpz);
 
         tellor_set_difficulty(difficulty_words);
-        cudaMemset(d_remainder[thr_id], 0x0, sizeof(uint8_t) * throughput);
+        //cudaMemset(d_remainder[thr_id], 0xFF, 8 * sizeof(uint8_t) * throughput);
 
         //        exit(1);
 
@@ -241,6 +245,14 @@ Out[28]: 0
 
         work->valid_nonces = 0;
 	do {
+          //          cudaPointerAttributes attr;
+          //          CUDA_CHECK(cudaPointerGetAttributes(&attr, d_remainder[thr_id]));
+          //          printf("memory type: %d\n", attr.memoryType);
+          //          printf("type: %d\n", attr.type);
+          //          printf("device: %d\n", attr.device);
+          //          printf("device ptr: %p\n", attr.devicePointer);
+          //          printf("host ptr: %p\n", attr.hostPointer);
+          //          printf("managed: %d\n", attr.isManaged);
           //                printf("START: %lu, FIRST: %lu, DONE: %lu\n",
           //                work->current_nonce,
           // first_nonce, throughput);
@@ -259,7 +271,7 @@ Out[28]: 0
           //          CUDA_CHECK(cudaThreadSynchronize());
           //          CUDA_LOG_ERROR();
           tellor_sha256_hash_final(thr_id, throughput, d_hash[thr_id]);
-          CUDA_CHECK(cudaThreadSynchronize());
+          //          CUDA_CHECK(cudaThreadSynchronize());
           CUDA_LOG_ERROR();
 
 #if 0
@@ -274,33 +286,31 @@ Out[28]: 0
           //          exit(1);
 #endif          
           tellor_difficulty(thr_id, throughput, d_hash[thr_id], d_remainder[thr_id]);
-          CUDA_CHECK(cudaThreadSynchronize());
+          //                printf("diff d_hash: %08x\n", d_hash[thr_id]);
+          //                printf("d_remainder: %08x\n", d_remainder[thr_id]);
+                //          CUDA_CHECK(cudaThreadSynchronize());
           CUDA_LOG_ERROR();
 
                 //                exit(1);
-          //          CUDA_CHECK(cudaDeviceSynchronize());
+          CUDA_CHECK(cudaDeviceSynchronize());
           CUDA_CHECK(
-              cudaMemcpy(&h_remainder[thr_id], d_remainder[thr_id], sizeof(uint8_t) * throughput,
+              cudaMemcpy(h_remainder[thr_id], d_remainder[thr_id], sizeof(uint8_t) * throughput,
                          cudaMemcpyDeviceToHost));
           CUDA_LOG_ERROR();
 
           work->nonces[0] = UINT64_MAX;
-          uint8_t* output = (uint8_t*)&h_remainder[thr_id];
+          uint8_t* output = (uint8_t*)h_remainder[thr_id];
           for (int i = 0; i < throughput; i++) {
-            //          for (int i = 0; i < 8; i++) {
-            //            printf("%d: %d\n", i, output[i]);
-            if (output[i] == 1) {
+          //          for (int i = 0; i < 8; i++) {
+            //printf("%d: %d\n", i, output[i]);
+          if (output[i] == 1) {
               work->nonces[0] = work->current_nonce + i;
               printf("FOUND NONCE: %" PRIu64 "\n", work->nonces[0]);
               break;
             }
           }
-          
           *hashes_done = work->current_nonce - first_nonce + throughput;
           
-
-          //          exit(1);
-
           //                cudaEventRecord(stop_event, 0);
                 //                cudaEventSynchronize(stop_event);
                 //                float time_elapsed;
@@ -317,16 +327,17 @@ Out[28]: 0
 			const uint32_t Htarg = ptarget[7];
 			uint32_t _ALIGN(64) vhash[8];
                         std::string nonce = std::to_string(work->nonces[0]);
-                        memcpy(&((uint8_t*)work->data)[0], nonce.c_str(), 19);                   
+                        memcpy(&((uint8_t*)work->data)[52], nonce.c_str(), 19);                   
                         tellor_hash(vhash, work->data, 71);
                         //                        exit(1);
-
+                        
                         //			if (vhash[0] <= ptarget[7] && fulltest(vhash, ptarget)) {
                         //			if (vhash[0] <= ptarget[7]) {
                         if (true) {
                         work->valid_nonces = 1;
 				work_set_target_ratio(work, vhash);
                                 work->current_nonce = work->nonces[0] + 1;
+                                //                                free_tellor(thr_id);
 				return work->valid_nonces;
 			}
 			else if (vhash[0] > Htarg) {
@@ -343,17 +354,21 @@ Out[28]: 0
 		}
 
 		if ((uint64_t) throughput + work->current_nonce >= max_nonce) {
-                  //                  printf("BREAK\n");
+                  //printf("BREAK: %016lx + %016lx > %016lx\n", throughput, work->current_nonce, max_nonce);
                   work->current_nonce = max_nonce;
                   break;
 		}
 
-		work->current_nonce += throughput;
+                work->current_nonce += throughput;
+		//work->current_nonce += 8;
+                //if (work->current_nonce > 5048335987331992217) exit(1);
                 //                printf("NEW NONCE: %" PRIu64 "\n", work->current_nonce);
 
 	} while (!work_restart[thr_id].restart);
 
 	*hashes_done = work->current_nonce - first_nonce;
+        //        free_tellor(thr_id);
+
 	return 0;
 }
 
@@ -376,6 +391,6 @@ extern "C" void free_tellor(int thr_id)
 	init[thr_id] = false;
 
 	cudaDeviceSynchronize();
-#endif
+#endif        
 }
 
