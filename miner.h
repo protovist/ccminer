@@ -711,6 +711,7 @@ struct tx {
 struct work {
 	uint32_t data[128];
 	uint32_t target[8];
+        char difficulty[20];
 	uint32_t maxvote;
 
 	char job_id[128];

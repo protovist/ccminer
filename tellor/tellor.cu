@@ -196,6 +196,7 @@ Out[28]: 0
 
         */
 
+#if 0
         uint8_t challenge[32] = {
             0xbc, 0x4a, 0x80, 0xff, 0x6b, 0x8a, 0xb0, 0xa7, 0xef, 0x20, 0xba,
             0x8c, 0xb5, 0x7d, 0x67, 0x89, 0x77, 0x23, 0x54, 0x23, 0xb7, 0x71,
@@ -209,22 +210,26 @@ Out[28]: 0
         memcpy(&((uint8_t*)work->data)[0], challenge, 32);
         memcpy(&((uint8_t*)work->data)[32], address, 20);
 
+        #endif
+
         char nonce_text[38] = {0};
         tellor_format_nonce(work->current_nonce, nonce_text);
         memcpy(&((uint8_t*)work->data)[52], nonce_text, 19);
+        
         tellor_setBlock_56(work->data);
-
+        
         //        uint32_t hash[8];
         //        tellor_hash(&hash, work->data, 71);
 
-        //        char* difficulty_text = "10708507298";
-        char* difficulty_text = "10708507298";
+        //char* difficulty_text = "10708507298";
         mpz_t difficulty_mpz;
         mpz_init(difficulty_mpz);
-        mpz_set_str(difficulty_mpz, difficulty_text, 10);
+        //mpz_set_str(difficulty_mpz, difficulty_text, 10);
+        mpz_set_str(difficulty_mpz, work->difficulty, 10);
 
         uint32_t difficulty_words[8];
         mpz_export(&difficulty_words, NULL, -1, 32, -1, 0, difficulty_mpz);
+
 #if 0        
         printf("MPZ DIFF: ");
         for (int i = 0; i < 8; i++) {
@@ -305,7 +310,6 @@ Out[28]: 0
             //printf("%d: %d\n", i, output[i]);
           if (output[i] == 1) {
               work->nonces[0] = work->current_nonce + i;
-              printf("FOUND NONCE: %" PRIu64 "\n", work->nonces[0]);
               break;
             }
           }
@@ -337,6 +341,9 @@ Out[28]: 0
                         work->valid_nonces = 1;
 				work_set_target_ratio(work, vhash);
                                 work->current_nonce = work->nonces[0] + 1;
+                                printf("FOUND NONCE: %" PRIu64 " %" PRIu64
+                                       "\n", work->nonces[0], work->current_nonce);
+
                                 //                                free_tellor(thr_id);
 				return work->valid_nonces;
 			}

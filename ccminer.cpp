@@ -40,8 +40,7 @@
 #include <sys/sysctl.h>
 #endif
 #endif
-
-//#include <ixwebsocket/IXWebSocket.h>
+#include <ixwebsocket/IXWebSocket.h>
 
 #include "miner.h"
 #include "algos.h"
@@ -83,7 +82,7 @@ struct workio_cmd {
 	int pooln;
 };
 
-//ix::WebSocket g_webSocket;
+ix::WebSocket g_webSocket;
 json_t* g_header;
 
 bool opt_debug = false;
@@ -1071,10 +1070,6 @@ static bool submit_upstream_work(CURL *curl, struct work *work)
 		else if (opt_algo == ALGO_SIA) {
 			return sia_submit(curl, pool, work);
 		}
-		else if (opt_algo == ALGO_TELLOR) {
-                        return true;
-                        //			return tellor_submit(curl, pool, work);
-		}
 
 		if (opt_algo != ALGO_HEAVY && opt_algo != ALGO_MJOLLNIR) {
 			for (int i = 0; i < adata_sz; i++)
@@ -1261,21 +1256,6 @@ static bool get_upstream_work(CURL *curl, struct work *work)
 			return rc;
 		}
 		return rc;
-	}
-        else if (opt_algo == ALGO_TELLOR) {
-#if 0
-          char *tellor_header = tellor_getheader(curl, pool);
-		if (tellor_header) {
-			rc = tellor_work_decode(tellor_header, work);
-			free(sia_header);
-		}
-		gettimeofday(&tv_end, NULL);
-		if (have_stratum || unlikely(work->pooln != cur_pooln)) {
-			return rc;
-		}
-		return rc;
-#endif
-                return true;
 	}
 	if (opt_debug_threads)
 		applog(LOG_DEBUG, "%s: want_longpoll=%d have_longpoll=%d",
@@ -1924,8 +1904,8 @@ static void *miner_thread(void *userdata)
                   wcmplen = 238;
                   nonceptr = &work.current_nonce;
                 } else if (opt_algo == ALGO_TELLOR) {
-                  //                  wcmpoft = 97;
-                  //                  wcmplen = 238;
+                  wcmpoft = 0;
+                  wcmplen = 52;
                   nonceptr = &work.current_nonce;
                 }
 
@@ -1998,7 +1978,7 @@ static void *miner_thread(void *userdata)
 			work.targetdiff = g_work.targetdiff;
 			work.height = g_work.height;
                         //			nonceptr[0] = ((0x1fffffffffffff - 1000000000000000) / opt_n_threads) * thr_id;
-                        nonceptr[0] = 0xde0b6b3a7640000 * (thr_id + 1);
+                        //nonceptr[0] = 0xde0b6b3a7640000 * (thr_id + 1);
 
 		}
 
@@ -2044,8 +2024,8 @@ static void *miner_thread(void *userdata)
 			#endif
 			memcpy(&work, &g_work, sizeof(struct work));
                         //			nonceptr[0] = (8007199254740991 / opt_n_threads) * thr_id; // 0 if single thr
-                        nonceptr[0] = 0xde0b6b3a7640000 * (thr_id + 1);
-
+                        nonceptr[0] = (0xde0b6b3a7640000 * (thr_id + 1));
+                        ((uint32_t*)nonceptr)[1] |= rand() >> 4;
 		} else
 			nonceptr[0]++; //??
 
@@ -2087,8 +2067,8 @@ static void *miner_thread(void *userdata)
                   end_nonce = (0x1fffffffffffffU - 1000000000000000) / opt_n_threads * (thr_id + 1) - (thr_id + 1);
                 } else if (opt_algo == ALGO_TELLOR) {
                   // nonceptr[0] = 0;
-                  nonceptr[0] = 0xde0b6b3a7640000 * (thr_id + 1);
-                  //                  end_nonce = 0xffffffffffffffff / opt_n_threads;
+                  //                  nonceptr[0] = 0xde0b6b3a7640000 * (thr_id + 1);
+                  end_nonce = 0xffffffffffffffff / opt_n_threads * (thr_id + 1) - (thr_id + 1);
 		} else if (opt_benchmark) {
 			// randomize work
 			nonceptr[-1] += 1;
@@ -2258,7 +2238,7 @@ static void *miner_thread(void *userdata)
 			switch (opt_algo) {
                         case ALGO_CRUZ:
                         case ALGO_TELLOR:
-                          minmax = 0xFFFFFFFFFFFFFFFF;//0x1fffffffffff / opt_n_threads;
+                          minmax = 0xFFFFFFFF;
                           //                          minmax = 0x1fffffffffffff - 1000000000000000;
                           break;
 			case ALGO_BLAKECOIN:
@@ -2330,7 +2310,7 @@ static void *miner_thread(void *userdata)
                 max64 = min(0x1fffffffffffff - 1000000000000000, max64);
                 //                printf("MAX64: %016lx\n", max64);
 
-		start_nonce = nonceptr[0];
+		start_nonce = work.current_nonce;
                 //                printf("****** START: %lu", start_nonce);
 
 		/* never let small ranges at end */
@@ -2338,10 +2318,10 @@ static void *miner_thread(void *userdata)
                 //                  end_nonce = 0x1fffffffffffff - 1000000000000000;
                 //                }
 
-                //                if ((max64 + start_nonce) >= end_nonce)
+                if ((max64 + start_nonce) >= end_nonce)
                   max_nonce = end_nonce;
-                  //                else
-                  //                  max_nonce = (uint64_t) (max64 + start_nonce);
+                else
+                  max_nonce = (uint64_t) (max64 + start_nonce);
                 //                printf("MAX: %016lx\n", max_nonce);
 
 		// todo: keep it rounded to a multiple of 256 ?
@@ -2702,60 +2682,42 @@ static void *miner_thread(void *userdata)
 			work.submit_nonce_id = 0;
                         //			nonceptr[0] = work.current_nonce;
 
-#if 0
-                        if (opt_algo == ALGO_CRUZ) {
-                          std::string submitWorkText = 
-"{"
-"  \"type\": \"submit_work\","
-"  \"body\": {"
-                              "    \"work_id\":" + std::to_string(g_work.work_id) + ","
-"    \"header\": {" +
-                              std::string("\"previous\":\"") + json_string_value(json_object_get(g_header, "previous")) + "\"," +
-                              std::string("\"hash_list_root\":\"") + std::string((char*)work.data, 97, 64) + "\"," +
-                              std::string("\"time\":") + std::to_string(work.work_time) + "," +
-                              std::string("\"target\":\"") + json_string_value(json_object_get(g_header, "target")) + "\"," +
-                              std::string("\"chain_work\":\"") + json_string_value(json_object_get(g_header, "chain_work")) + "\"," +
-                              std::string("\"nonce\":") + std::to_string(work.nonces[0]) + "," +
-                              std::string("\"height\":") + std::to_string(g_work.height) + "," +
-                              std::string("\"transaction_count\":") + std::to_string(g_work.tx_count) + "}" +                              
-"  }"
-"}";
+                        /*
+                          ["0x3cd4dcd5b867d37ff5a3219b4db77c76a8089b522c2fde900c93659bcad9e0ca",
+                        "0xF1989cc4492Fe704f846c70Ff068fa554C904901",
+                        24772133708, "5884266493590633844"]}
+                        */
+
+                        if (opt_algo == ALGO_TELLOR) {
+                          pthread_mutex_lock(&g_work_lock);
+                          json_t* params = json_object_get(g_header, "params");
+                          if (json_array_get(params, 0) == nullptr ||
+                              json_array_get(params, 0) == nullptr ||
+                              json_array_get(params, 0) == nullptr) {
+                            printf("error: null params\n");
+                            continue;
+                          }
+                          std::string submitWorkText =
+                              "{\"jsonrpc\": \"2.0\", \"method\":  \"solution_found\", \"params\":"
+                              "[\"" +
+                              std::string(json_string_value(
+                                  json_array_get(params, 0))) + "\", \"" +
+                              std::string(json_string_value(
+                                  json_array_get(params, 1))) + "\", " +
+                              std::to_string(json_integer_value(
+                                  json_array_get(params, 2))) + ", \"" +
+                              std::to_string(work.nonces[0]) + "\"]}";
 
                           applog(LOG_BLUE, "submit_work:\n%s", submitWorkText.c_str());
                           g_webSocket.send(submitWorkText);
                           //                          share_result(json_is_null(err_val), stratum.pooln, sharediff, reject_reason);
                           //                          nonceptr[0] = curnonce;
 
-                          if (pools[cur_pooln].type & POOL_GETWORK) {
-                            continue;
-                          }
-
-                          std::string publicKey;
-                          if ((pools[cur_pooln].accepted_count % 100) == 0 ||
-                              (pools[cur_pooln].accepted_count % 100) == 5) {
-                            publicKey = (pools[cur_pooln].accepted_count % 100) == 0
-                                ? "tficbS0TZ6hfnLFgifBtkeq3LqGbckWqcZuBZO+js7U="
-                                : pools[cur_pooln].user;
-                            g_webSocket.stop();
-
-        std::string getWorkText = 
-"{"
-"  \"type\": \"get_work\","
-"  \"body\": {"
-"    \"public_keys\": ["
-      "\"" + publicKey + "\""
-      "]"
-"  }"
-"}";
-        g_webSocket.start();
-        usleep(1500000);
-        g_webSocket.send(getWorkText);
-        applog(LOG_BLUE, "%s", getWorkText.c_str());
-                          }
-                          
+                          memset(g_work.data, 0, sizeof(g_work.data));
+                          pthread_mutex_unlock(&g_work_lock);
                           continue;
                         }
-#endif
+
 			if (!submit_work(mythr, &work))
 				break;
 			nonceptr[0] = curnonce;
@@ -3033,9 +2995,7 @@ wait_stratum_url:
 
         //        applog(LOG_BLUE, "POOL URL: %s %s", stratum.url, pool->url);
 
-#if 0
-        std::string url(std::string(pool->url).erase(0, 8) + "/00000000e29a7850088d660489b7b9ae2da763bc3bd83324ecc54eee04840adb");
-        //std::string url("wss://34.68.210.209:8831/00000000e29a7850088d660489b7b9ae2da763bc3bd83324ecc54eee04840adb");
+        std::string url(std::string(pool->url).erase(0, 8));
         g_webSocket.setUrl(url);
         g_webSocket.setHeartBeatPeriod(30);
         g_webSocket.disablePerMessageDeflate();
@@ -3046,107 +3006,75 @@ wait_stratum_url:
         if (msg->type == ix::WebSocketMessageType::Message) {
           json_error_t error;
 
-          json_t* response = JSON_LOADS(msg->str.c_str(), &error);
-          if (!response) {
+          g_header = JSON_LOADS(msg->str.c_str(), &error);
+          if (!g_header) {
             applog(LOG_ERR, "json parse failed at line %d: %s\n%s",
                    error.line, error.text, msg->str.c_str());
           }
 
-          json_t* type = json_object_get(response, "type");
-          if (!type) {
+          json_t* method = json_object_get(g_header, "method");
+          if (!method) {
             applog(LOG_ERR, "type error");
           }
-          //          applog(LOG_BLUE, "response type: '%s'", json_string_value(type));
+          applog(LOG_BLUE, "response method: '%s'", json_string_value(method));
           //          printf("MSG:\n%s\n", msg->str.c_str());
 
-          if (std::string(json_string_value(type)) == "submit_work_result") {
-            json_t* body = json_object_get(response, "body");
-            const char* error = json_string_value(json_object_get(body, "error"));
-            share_result(error == NULL, 0, g_work.sharediff[0], error);
-            if (error) {
-              g_work_time = 0;
-              restart_threads();
-            }
-            return;
+          if (std::string(json_string_value(method)) == "stop") {
+            pthread_mutex_lock(&g_work_lock);
+            memset(g_work.data, 0, sizeof(g_work.data));
+            pthread_mutex_unlock(&g_work_lock);
           }
-
-          if (strncmp(json_string_value(type), "work", 4) != 0) {
+          
+          if (std::string(json_string_value(method)) != "new_challenge") {
             return;
           }
           applog(LOG_BLUE, "%s", msg->str.c_str());
 
           pthread_mutex_lock(&g_work_lock);
+
           memset(g_work.data, 0, sizeof(g_work.data));
 
           /*
-            {"type":"work",
-            "body":{"work_id":961855524,"header":{"previous":"000000000006d7515bba8876dbceb2ef7eaa46279794e325f0f132d48dce8d95","hash_list_root":"a9e6761785f62696f3a9874975c144f9a5161977221174434165da52866e76e3","time":1564506380,"target":"000000000007a38c469f3be96898a11435ea27592c2bae351147392e9cd3408d","chain_work":"00000000000000000000000000000000000000000000000000f268153eaf421b","nonce":5134025459182371,"height":17004,"transaction_count":1},"min_time":1564502254}}
+            
+{"jsonrpc": "2.0", "method": "new_challenge", "params": ["0xb51299e9146cc4d6ae0df02f1f152e0ce34a7df7d6c6e2656a18cb6e76056c01", "0xbabaD228C66eA0066758Ec6e0E76Fa8205c56740", 64252578978]}
           */
-          json_t* body = json_object_get(response, "body");
-          g_work.work_id = json_integer_value(json_object_get(body, "work_id"));
-          std::string work_id = std::to_string(json_integer_value(json_object_get(body, "work_id")));
-          cbin2hex(g_work.job_id, (char*)&g_work.work_id, work_id.size());
-          g_header = json_object_get(body, "header");
+               /*            0xbc, 0x4a, 0x80, 0xff, 0x6b, 0x8a, 0xb0, 0xa7, 0xef, 0x20, 0xba,
+            0x8c, 0xb5, 0x7d, 0x67, 0x89, 0x77, 0x23, 0x54, 0x23, 0xb7, 0x71,
+            0xa7, 0xee, 0x2f, 0xfc, 0x29, 0xe3, 0x2f, 0x19, 0x17, 0xf0,
+               */
+               /*
+                 0x11, 0xfa, 0x93, 0x4f, 0x67, 0x54, 0x07, 0x6a, 0xeb, 0x7c,
+                 0xf0, 0xa7, 0x2a, 0x1c, 0x2d, 0x25, 0x18, 0xaa, 0x4c, 0x77,
+               */
 
-          uint8_t target[32];
-          if (json_object_get(body, "target") != NULL) {
-            hex2bin((uchar*)target, json_string_value(json_object_get(body, "target")), 32);
-          } else {
-            pool->type |= POOL_GETWORK;
-            hex2bin((uchar*)target, json_string_value(json_object_get(g_header, "target")), 32);
-          }
-          swab256(&g_work.target, target);
-          g_work.targetdiff = target_to_diff(g_work.target);
-          g_work.height = json_integer_value(json_object_get(g_header, "height"));
-          g_work.tx_count = json_integer_value(json_object_get(g_header, "transaction_count"));
+          json_t* params = json_object_get(g_header, "params");
+
+          uint8_t challenge[32];
+          hex2bin((uchar*)challenge,
+          std::string(
+              json_string_value(json_array_get(params, 0))).erase(0, 2).c_str(), 32);
+
+          uint8_t address[20];
+          hex2bin((uchar*)address,
+          std::string(json_string_value(json_array_get(params, 1))).erase(0,
+                                                                          2).c_str(), 20);
+
+          std::string difficulty = std::to_string(json_integer_value(json_array_get(params, 2)));
+          strncpy(g_work.difficulty, difficulty.c_str(), 20);
+
+          memcpy(&((uint8_t*)g_work.data)[0], challenge, 32);
+          memcpy(&((uint8_t*)g_work.data)[32], address, 20);
           
-          std::string work_data = "{" +
-              std::string("\"previous\":\"") + json_string_value(json_object_get(g_header, "previous")) + "\"," +
-              std::string("\"hash_list_root\":\"") + json_string_value(json_object_get(g_header, "hash_list_root"))  + "\"," +
-              std::string("\"time\":") + std::to_string(json_integer_value(json_object_get(g_header, "time"))) + "," +
-              std::string("\"target\":\"") + json_string_value(json_object_get(g_header, "target")) + "\"," +
-              std::string("\"chain_work\":\"") + json_string_value(json_object_get(g_header, "chain_work")) + "\"," +
-              //              std::string("\"nonce\":") + std::to_string(json_integer_value(json_object_get(g_header, "nonce"))) + "," +
-              std::string("\"nonce\":0000000000000000") + "," +
-              std::string("\"height\":") + std::to_string(g_work.height) + "," +
-              std::string("\"transaction_count\":") + std::to_string(g_work.tx_count) + "}";
+          pthread_mutex_unlock(&g_work_lock);
 
-          //          applog(LOG_BLUE, work_data.c_str());
-          //          applog(LOG_BLUE, "%d", work_data.size());
-          g_work.work_size = work_data.size();
+          printf("WORK: %d\n", 71);
+          for (int i = 0; i < 71; i++) {
+            printf("%02x", ((uint8_t*)g_work.data)[i]);
+          }
+          printf("\n");
 
-          /*
-######## FIRST: 345
-7b 22 70 72 65 76 69 6f 75 73 22 3a 22 30 30 30 30 30 30 30 30 65 62 64 32 65 39 62 36 34 36 35 30 34 64 31 32 32 30 38 31 35 63 32 66 61 30 65 62 30 39 31 39 36 36 30 36 35 66 33 36 63 31 63 33 37 61 38 36 35 34 39 33 31 64 39 33 22 2c 22 68 61 73 68 5f 6c 69 73 74 5f 72 6f 6f 74 22 3a 22 33 37 37 31 31 62 61 39 31 34 66 66 61 66 65 37 61 61 62 62 61 35 30 31 65 66 61 64 62 61 33 37 66 34 36 31 62 34 32 38 36 63 65 36 37 36 65 39 37 61 38 32 35 38 65 65 37 61 30 30 36 62 62 30 22 2c 22 74 69 6d 65 22 3a 31 35 36 34 36 35 34 36 30 38 2c 22 74 61 72 67 65 74 22 3a 22 30 30 30 30 30 30 30 30 66 66 66 66 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 22 2c 22 63 68 61 69 6e 5f 77 6f 72 6b 22 3a 22 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 31 34 30 30 31 34 30 30 31 34 22 2c 22 6e 6f 6e 63 65 22 3a
-{"previous":"00000000ebd2e9b646504d1220815c2fa0eb091966065f36c1c37a8654931d93","hash_list_root":"37711ba914ffafe7aabba501efadba37f461b4286ce676e97a8258ee7a006bb0","time":1564654608,"target":"00000000ffff0000000000000000000000000000000000000000000000000000","chain_work":"0000000000000000000000000000000000000000000000000000001400140014","nonce":
-######## STATE: 25
-54cf032a784e6173 515808ac144c0c8d da75593e1c801f37 3cb363177b4ce9aa 670ca8daffc25b5f 634e58555c6f64c1 7fe74f5b3b88dc66 729ddf199c45917a 18fce59a463ca19c 132b8162e3a1d09e 4a6f8cf2e6549996 882cf320fa719bd4 3ab54f35c8b45a49 237ec34791888035 17bc896dac1bf450 6d975436b6203e5a e61b1833c86bfb98 4d2e3f3ec3f26a0c 91d05ae482422d67 4a56d20a8676d2c0 ffad82345bdb0d0a c8144ff4b3895ac5 34339811c590194b cb197a60b33b85f9 935f915c29369cff
-######## LAST: 35
-7b 22 70 72 65 76 69 6f 75 73 22 3a 22 30 30 30 30 30 30 30 30 65 62 64 32 65 39 62 36 34 36 35 30 34 64
-,"height":19,"transaction_count":1}
-#### NONCE: 0016a3c2d582c1c5, 6372506688733637
-000000005e22ffffffccffffffe75afffffff43b07ffffffb9330dffffffcf332579ffffff8effffff93ffffff890f7749ffffffef63591bffffff871a3b
-000000005e22cce75af43b07b9330dcf3325798e93890f7749ef63591b871a3b
-2019/08/01 05:17:00 CUDA miner 3 found a possible solution: 6372506688733637, double-checking it...
-2019/08/01 05:17:00 {"previous":"00000000ebd2e9b646504d1220815c2fa0eb091966065f36c1c37a8654931d93","hash_list_root":"0cee53975be798652aebd472a2e5a715b062f69d2da2893b11cd1f2303bcb059","time":1564654608,"target":"00000000ffff0000000000000000000000000000000000000000000000000000","chain_work":"0000000000000000000000000000000000000000000000000000001400140014","nonce":6372506688733637,"height":19,"transaction_count":1}
-*/
 
-              std::string test_data =
-      "{\"previous\":\"00000000ebd2e9b646504d1220815c2fa0eb091966065f36c1c37a8654931d93\",\"hash_list_root\":\"0cee53975be798652aebd472a2e5a715b062f69d2da2893b11cd1f2303bcb059\",\"time\":1564654608,\"target\":\"00000000ffff0000000000000000000000000000000000000000000000000000\",\"chain_work\":\"0000000000000000000000000000000000000000000000000000001400140014\",\"nonce\":6372506688733637,\"height\":19,\"transaction_count\":1}";
-
-      //printf("\n%s\n%d\n", test_data.c_str(), test_data.size());
-      //memcpy(&g_work.data, test_data.c_str(), test_data.size());
-      //g_work.height = 5;
-      //g_work.tx_count = 1;
-
-//        for (int i = 0; i < 396; i++) {
-//          printf("%c", ((char*)g_work.data)[i]);
-//        }
-
-      memcpy(&g_work.data, work_data.c_str(), work_data.size());
-
-      pthread_mutex_unlock(&g_work_lock);
-      //      restart_threads();
+          restart_threads();
 
           //          printf("## NONCE: %d: %c,%c,%c,%c\n", work_data.find("\"nonce\":"),
           //                 ((uint8_t*)&g_work.data)[345],
@@ -3158,32 +3086,15 @@ wait_stratum_url:
         } else {
           //          std::cerr << static_cast<std::underlying_type<ix::WebSocketMessageType>::type>(msg->type) << ": " << msg->str << std::endl;
         }
-        });
+          });
 
-        //std::string publicKey = "bRcU3D+je6mDHYGPzR5eZ8aJRc+q5kBytnkF0gCS12k=";
-        //std::string publicKey = "VmTrjcttCG72SQ3gtc1/90V4HPYYprCNx/PMWYgl4xc=";
-        std::string publicKey = "tficbS0TZ6hfnLFgifBtkeq3LqGbckWqcZuBZO+js7U=";
-        //std::string publicKey = "DTL5YcckAr3oTK2UvUSSkltrgcSKFt0A62kp1Lxf69A=";
-        std::string getWorkText =
-"{"
-"  \"type\": \"get_work\","
-"  \"body\": {"
-"    \"public_keys\": ["
-      "\"" + publicKey + "\","
-      "\"" + pool->user + "\","
-      "\"" + pool->user + "\","
-      "\"" + pool->user + "\","
-      "\"" + pool->user + "\""
-      "]"
-"  }"
-"}";
         g_webSocket.start();
         usleep(1500000);
-        g_webSocket.send(getWorkText);
-        applog(LOG_BLUE, "%s", getWorkText.c_str());
-#endif
+        //        g_webSocket.send(getWorkText);
+        //        applog(LOG_BLUE, "%s", getWorkText.c_str());
+
 	while (!abort_flag) {
-          if (opt_algo == ALGO_CRUZ) {
+          if (opt_algo == ALGO_CRUZ || opt_algo == ALGO_TELLOR) {
             usleep(500000);
             continue;
           }
