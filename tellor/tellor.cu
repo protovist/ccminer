@@ -313,6 +313,7 @@ Out[28]: 0
               break;
             }
           }
+          //          exit(1);
           *hashes_done = work->current_nonce - first_nonce + throughput;
           
           //                cudaEventRecord(stop_event, 0);

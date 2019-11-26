@@ -1867,6 +1867,7 @@ static void *miner_thread(void *userdata)
 	}
 
 	gpu_led_off(dev_id);
+        srand(time(0));
 
 	while (!abort_flag) {
 		struct timeval tv_start, tv_end, diff;
@@ -1912,7 +1913,7 @@ static void *miner_thread(void *userdata)
 		if (have_stratum) {
 			uint32_t sleeptime = 0;
 
-			if (opt_algo == ALGO_TELLOR || opt_algo == ALGO_CRUZ || opt_algo == ALGO_DECRED || opt_algo == ALGO_WILDKECCAK /* getjob */)
+			if (opt_algo == ALGO_CRUZ || opt_algo == ALGO_DECRED || opt_algo == ALGO_WILDKECCAK /* getjob */)
 				work_done = true; // force "regen" hash
 			while (!work_done && time(NULL) >= (g_work_time + opt_scantime)) {
 				usleep(100*1000);
@@ -1922,8 +1923,8 @@ static void *miner_thread(void *userdata)
 				}
 				sleeptime++;
 			}
-			if (sleeptime && opt_debug && !opt_quiet)
-				applog(LOG_DEBUG, "sleeptime: %u ms", sleeptime*100);
+                        //			if (sleeptime && opt_debug && !opt_quiet)
+                        //				applog(LOG_DEBUG, "sleeptime: %u ms", sleeptime*100);
 			//nonceptr = (uint32_t*) (((char*)work.data) + wcmplen);
 			pthread_mutex_lock(&g_work_lock);
 			extrajob |= work_done;
@@ -2068,6 +2069,8 @@ static void *miner_thread(void *userdata)
                 } else if (opt_algo == ALGO_TELLOR) {
                   // nonceptr[0] = 0;
                   //                  nonceptr[0] = 0xde0b6b3a7640000 * (thr_id + 1);
+                  //                  nonceptr[0] = (0xde0b6b3a7640000 * (thr_id + 1));
+                  //                  ((uint32_t*)nonceptr)[1] |= rand() >> 4;
                   end_nonce = 0xffffffffffffffff / opt_n_threads * (thr_id + 1) - (thr_id + 1);
 		} else if (opt_benchmark) {
 			// randomize work
@@ -2695,6 +2698,8 @@ static void *miner_thread(void *userdata)
                               json_array_get(params, 0) == nullptr ||
                               json_array_get(params, 0) == nullptr) {
                             printf("error: null params\n");
+                            memset(g_work.data, 0, sizeof(g_work.data));
+                            pthread_mutex_unlock(&g_work_lock);
                             continue;
                           }
                           std::string submitWorkText =
