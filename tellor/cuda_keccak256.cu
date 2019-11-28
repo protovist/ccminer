@@ -176,7 +176,7 @@ __host__
   dim3 block(threadsperblock);
 
   tellor_keccak256_gpu_hash<<<grid, block>>>(threads, startNounce, d_hash);
-  //tellor_keccak256_gpu_hash<<<8, 1>>>(threads, startNounce, d_hash);
+  //tellor_keccak256_gpu_hash<<<4, 1>>>(threads, startNounce, d_hash);
 }
 
 __host__

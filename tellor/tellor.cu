@@ -17,8 +17,8 @@ extern "C"
 static uint32_t* d_hash[MAX_GPUS];
 static uint32_t* h_hash[MAX_GPUS];
 
-static uint8_t* d_remainder[MAX_GPUS];
-static uint8_t* h_remainder[MAX_GPUS];
+static uint64_t* d_nonce[MAX_GPUS];
+static uint64_t* h_nonce[MAX_GPUS];
 
 extern void tellor_setBlock_56(uint32_t* data);
 extern void tellor_keccak256_init(int thr_id);
@@ -26,7 +26,7 @@ extern void tellor_sha256_init(int thr_id);
 extern void tellor_keccak256_hash(int thr_id, uint64_t threads, uint64_t startNonce, uint32_t* d_hash);
 extern void tellor_ripemd_hash(int thr_id, uint64_t threads, uint32_t* d_hash);
 extern void tellor_sha256_hash_final(int thr_id, uint64_t threads, uint32_t* d_hash);
-extern void tellor_difficulty(int thr_id, uint64_t threads, uint32_t* d_hash, uint8_t *d_remainder);
+extern void tellor_difficulty(int thr_id, uint64_t threads, uint32_t* d_hash, uint64_t *d_nonce);
 extern void tellor_set_difficulty(const uint32_t* difficulty);
 
 extern "C" void free_tellor(int thr_id);
@@ -116,6 +116,7 @@ extern "C" int scanhash_tellor(int thr_id, struct work* work, uint64_t max_nonce
 	uint32_t *pdata = work->data;
 	uint32_t *ptarget = work->target;
         //work->current_nonce = 5048335987331992217;
+        //work->current_nonce = 5048335987331992215;
         //work->current_nonce = 5048335987331992200;
         //work->current_nonce = 5048335987331990000;
         //work->current_nonce = 5040000000000000000;
@@ -150,7 +151,7 @@ extern "C" int scanhash_tellor(int thr_id, struct work* work, uint64_t max_nonce
                 //                CUDA_CALL_OR_RET_X(
                 //                    cudaMalloc(&d_difficulty[thr_id],
                 //                    sizeof(uint32_t) * 8), 0);
-                CUDA_CHECK(cudaMalloc(&d_remainder[thr_id], sizeof(uint8_t) * (size_t)throughput));
+                CUDA_CHECK(cudaMalloc(&d_nonce[thr_id], sizeof(uint64_t) * 2));
                 CUDA_LOG_ERROR();
                 //                CUDA_CALL_OR_RET_X(
                 //                    cudaMemset(d_hash[thr_id], 0,
@@ -161,7 +162,7 @@ extern "C" int scanhash_tellor(int thr_id, struct work* work, uint64_t max_nonce
                 //                    0);
 
                 //                h_hash[thr_id] = (uint32_t*)malloc(sizeof(uint32_t) * 8 * throughput);
-                h_remainder[thr_id] = (uint8_t*)malloc(sizeof(uint8_t) * (size_t)throughput);
+                h_nonce[thr_id] = (uint64_t*)malloc(sizeof(uint64_t) * 2);
 
 		gpulog(LOG_INFO, thr_id, "Intensity set to %g, %u cuda threads", throughput2intensity(throughput), throughput);
 
@@ -211,7 +212,7 @@ Out[28]: 0
         memcpy(&((uint8_t*)work->data)[0], challenge, 32);
         memcpy(&((uint8_t*)work->data)[32], address, 20);
 
-        #endif
+#endif
 
         char nonce_text[38] = {0};
         tellor_format_nonce(work->current_nonce, nonce_text);
@@ -222,11 +223,11 @@ Out[28]: 0
         //        uint32_t hash[8];
         //        tellor_hash(&hash, work->data, 71);
 
-        //char* difficulty_text = "10708507298";
         mpz_t difficulty_mpz;
         mpz_init(difficulty_mpz);
-        //mpz_set_str(difficulty_mpz, difficulty_text, 10);
         mpz_set_str(difficulty_mpz, work->difficulty, 10);
+        //char* difficulty_text = "10708507298";
+        //mpz_set_str(difficulty_mpz, difficulty_text, 10);
 
         uint32_t difficulty_words[8];
         mpz_export(&difficulty_words, NULL, -1, 32, -1, 0, difficulty_mpz);
@@ -241,7 +242,6 @@ Out[28]: 0
         mpz_clear(difficulty_mpz);
 
         tellor_set_difficulty(difficulty_words);
-        //cudaMemset(d_remainder[thr_id], 0xFF, 8 * sizeof(uint8_t) * throughput);
 
         //        exit(1);
 
@@ -251,6 +251,7 @@ Out[28]: 0
 
         work->valid_nonces = 0;
 	do {
+          cudaMemset(d_nonce[thr_id], UINT64_MAX, sizeof(uint64_t) * 2);
           //          cudaPointerAttributes attr;
           //          CUDA_CHECK(cudaPointerGetAttributes(&attr, d_remainder[thr_id]));
           //          printf("memory type: %d\n", attr.memoryType);
@@ -291,7 +292,7 @@ Out[28]: 0
           }
           //          exit(1);
 #endif          
-          tellor_difficulty(thr_id, throughput, d_hash[thr_id], d_remainder[thr_id]);
+          tellor_difficulty(thr_id, throughput, d_hash[thr_id], d_nonce[thr_id]);
           //                printf("diff d_hash: %08x\n", d_hash[thr_id]);
           //                printf("d_remainder: %08x\n", d_remainder[thr_id]);
                 //          CUDA_CHECK(cudaThreadSynchronize());
@@ -300,10 +301,14 @@ Out[28]: 0
                 //                exit(1);
           CUDA_CHECK(cudaDeviceSynchronize());
           CUDA_CHECK(
-              cudaMemcpy(h_remainder[thr_id], d_remainder[thr_id], sizeof(uint8_t) * throughput,
+              cudaMemcpy(h_nonce[thr_id], d_nonce[thr_id], sizeof(uint64_t) * 2,
                          cudaMemcpyDeviceToHost));
           CUDA_LOG_ERROR();
 
+          uint64_t* output = (uint64_t*)h_nonce[thr_id];
+          work->nonces[0] = output[0];
+
+#if 0
           work->nonces[0] = UINT64_MAX;
           uint8_t* output = (uint8_t*)h_remainder[thr_id];
           for (int i = 0; i < throughput; i++) {
@@ -314,6 +319,8 @@ Out[28]: 0
               break;
             }
           }
+#endif
+          //          printf("NONCE: %" PRIu64 "\n", work->nonces[0]);
           //          exit(1);
           *hashes_done = work->current_nonce - first_nonce + throughput;
           
@@ -328,9 +335,11 @@ Out[28]: 0
                 //        printf("*** HASHES: %lu %0.2f\n", *hashes_done, *hashes_done/(stop-start));
                 //                exit(1);
                 //                printf("WORKNONCE: %" PRIu64 "\n", work->nonces[0]);
-		if (work->nonces[0] > 0 && work->nonces[0] != UINT64_MAX && bench_algo < 0)
+          //		if (work->nonces[0] > 0 && work->nonces[0] != UINT64_MAX && bench_algo < 0)
+		if (work->nonces[0] != UINT64_MAX && bench_algo < 0)
 		{
-			const uint32_t Htarg = ptarget[7];
+                        work->nonces[0] += work->current_nonce;
+                        const uint32_t Htarg = ptarget[7];
 			uint32_t _ALIGN(64) vhash[8];
                         std::string nonce = std::to_string(work->nonces[0]);
                         memcpy(&((uint8_t*)work->data)[52], nonce.c_str(), 19);                   
@@ -343,10 +352,8 @@ Out[28]: 0
                         work->valid_nonces = 1;
 				work_set_target_ratio(work, vhash);
                                 work->current_nonce = work->nonces[0] + 1;
-                                printf("FOUND NONCE: %" PRIu64 " %" PRIu64
-                                       "\n", work->nonces[0], work->current_nonce);
+                                printf("FOUND NONCE: %" PRIu64 "\n", work->nonces[0]);
 
-                                //                                free_tellor(thr_id);
 				return work->valid_nonces;
 			}
 			else if (vhash[0] > Htarg) {
@@ -391,10 +398,10 @@ extern "C" void free_tellor(int thr_id)
 	cudaThreadSynchronize();
 
 	cudaFree(d_hash[thr_id]);
-	cudaFree(d_remainder[thr_id]);
+	cudaFree(d_nonce[thr_id]);
         //	cudaFree(d_difficulty[thr_id]);
 
-        free(h_remainder[thr_id]);
+        free(h_nonce[thr_id]);
 
         //	cuda_check_cpu_free(thr_id);
 	init[thr_id] = false;

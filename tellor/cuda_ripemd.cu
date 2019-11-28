@@ -15,7 +15,7 @@
 
 __global__ void tellor_difficulty_gpu(const uint64_t thread_count,
                                       uint32_t *d_hash,
-                                      uint8_t *d_remainder);
+                                      uint64_t *d_nonce);
 
 __constant__ static uint32_t c_difficulty[8];
 
@@ -30,7 +30,7 @@ typedef env256_t::cgbn_t cgbn_t;
 
 __global__ void tellor_difficulty_gpu(const uint64_t thread_count,
                                       uint32_t *d_hash,
-                                      uint8_t *d_remainder) {
+                                      uint64_t *d_nonce) {
   context_t bn_context;
   env256_t bn256_env(bn_context);
   cgbn_t hash, difficulty, remainder;
@@ -60,8 +60,10 @@ __global__ void tellor_difficulty_gpu(const uint64_t thread_count,
          cgbn_get_ui32(bn256_env, remainder));
 #endif
 
-  uint8_t* output = &d_remainder[instance];
-  output[0] = (uint8_t)cgbn_equals_ui32(bn256_env, remainder, 0);
+if (cgbn_equals_ui32(bn256_env, remainder, 0)) {
+    d_nonce[0] = instance;
+}
+  //  output[0] = (uint8_t)cgbn_equals_ui32(bn256_env, remainder, 0);
   //  cgbn_store(bn256_env, (cgbn_mem_t<256>*)&d_remainder[instance<<3], remainder);
 }
 
@@ -577,7 +579,7 @@ __host__
 	dim3 block(threadsperblock);
 
         tellor_sha256_gpu_hash_final <<<grid, block>>> (threads, (uint32_t*) d_inputHash);
-        //tellor_sha256_gpu_hash_final <<<8,1>>> (threads, (uint32_t*) d_inputHash);
+        //tellor_sha256_gpu_hash_final <<<4,1>>> (threads, (uint32_t*) d_inputHash);
 }
 
 __host__
@@ -590,16 +592,16 @@ __host__
 	dim3 block(threadsperblock);
 
         tellor_ripemd <<<grid, block>>> (threads,(uint32_t*) d_inputHash);
-        //tellor_ripemd <<<8,1>>> (threads,(uint32_t*) d_inputHash);
+        //tellor_ripemd <<<4,1>>> (threads,(uint32_t*) d_inputHash);
 }
 
 __host__ void tellor_difficulty(int gpu_id, uint64_t thread_count, uint32_t* d_hash,
-                                uint8_t *d_remainder) {
+                                uint64_t *d_nonce) {
   int threadsperblock = 512;
   int ipb = threadsperblock/TPI;
   dim3 grid((thread_count + ipb - 1) / threadsperblock);
   dim3 block(threadsperblock);
   
-  tellor_difficulty_gpu <<<grid, block>>> (thread_count, d_hash, d_remainder);
-  //tellor_difficulty_gpu<<<8,4>>>(thread_count, d_hash, d_remainder);
+  tellor_difficulty_gpu <<<grid, block>>> (thread_count, d_hash, d_nonce);
+  //tellor_difficulty_gpu<<<4,4>>>(thread_count, d_hash, d_nonce);
 }
