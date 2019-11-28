@@ -65,39 +65,39 @@ extern "C" void tellor_hash(void *output, const void *input, size_t count)
 	sph_keccak256_context ctx_keccak;
 	sph_ripemd160_context ctx_ripemd;
 	sph_sha256_context ctx_sha256;
-
+#if 0
         printf("DATA: %d\n", count);
         for (int i = 0; i < count; i++) {
           printf("%02x", ((uint8_t*)input)[i]);
         }
         printf("\n");
-
+#endif
 	sph_keccak256_init(&ctx_keccak);
 	sph_keccak256(&ctx_keccak, input, count);
 	sph_keccak256_close(&ctx_keccak, (void*)hash_keccak);
-
+#if 0
         printf("### CPU KECCAK HASH:\n");
         for (int i = 0; i < 8; i++) {
           printf("%08x ", hash_keccak[i]);
         }
         printf("\n");
-
+#endif
         sph_ripemd160_init(&ctx_ripemd);
 	sph_ripemd160(&ctx_ripemd, hash_keccak, 32);
 	sph_ripemd160_close(&ctx_ripemd, (void*)hash_ripemd);
-
+#if 0
         printf("### CPU RIPEMD HASH:\n");
         for (int i = 0; i < 8; i++) {
           printf("%08x ", hash_ripemd[i]);
         }
         printf("\n");
-
+#endif
 	sph_sha256_init(&ctx_sha256);
 	sph_sha256(&ctx_sha256, hash_ripemd, 20);
 	sph_sha256_close(&ctx_sha256, hash_sha256);
 
 	memcpy(output, hash_sha256, 32);
-
+#if 0
         uint32_t hash[8];
         printf("### CPU SHA256 HASH:\n");
         for (int i = 0; i < 8; i++) {
@@ -105,6 +105,7 @@ extern "C" void tellor_hash(void *output, const void *input, size_t count)
           printf("%08x ", hash[i]);
         }
         printf("\n");
+#endif
 }
 
 static bool init[MAX_GPUS] = { 0 };

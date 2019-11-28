@@ -2715,7 +2715,7 @@ static void *miner_thread(void *userdata)
 
                           applog(LOG_BLUE, "submit_work:\n%s", submitWorkText.c_str());
                           g_webSocket.send(submitWorkText);
-                          //                          share_result(json_is_null(err_val), stratum.pooln, sharediff, reject_reason);
+                          share_result(true, stratum.pooln, stratum.sharediff, NULL);
                           //                          nonceptr[0] = curnonce;
 
                           memset(g_work.data, 0, sizeof(g_work.data));
@@ -3072,12 +3072,11 @@ wait_stratum_url:
           
           pthread_mutex_unlock(&g_work_lock);
 
-          printf("WORK: %d\n", 71);
-          for (int i = 0; i < 71; i++) {
-            printf("%02x", ((uint8_t*)g_work.data)[i]);
-          }
-          printf("\n");
-
+          //          printf("WORK: %d\n", 71);
+          //          for (int i = 0; i < 71; i++) {
+          //            printf("%02x", ((uint8_t*)g_work.data)[i]);
+          //          }
+          //          printf("\n");
 
           restart_threads();
 
